@@ -16,7 +16,7 @@ smallFont = pygame.font.Font(None, 22)
 # =========================
 # World parameters
 # =========================
-roofHeight = 380
+roofHeight = 100
 floorY = 520
 hallLength = 4000
 platformWidthMin = 140
@@ -289,7 +289,7 @@ def computeJumpHeight(jump_strength, gravity_val):
     return (jump_strength * jump_strength) / (2.0 * g)
 
 def calculateFloorHeight(jump_strength, gravity_val):
-    jump_height - computeJumpHeight(jump_strength, gravity_val)
+    jump_height = computeJumpHeight(jump_strength, gravity_val)
     min_corridor = minCeilRoom + minFloorRoom + 180
     base_corridor = min_corridor + int(jump_height * 0.6)
     variation = max(24, int(jump_height * 0.35))
@@ -510,7 +510,7 @@ def rebuildWorld():
     global velX, velY, onGround, lastGroundedMs, lastJumpPressMs, cameraX
 
     bg_base, ceiling_base, _ = applyDimensionPalette(dimensionIndex)
-    roofHeight = calculateRoofHeight(jumpStrength, gravity)
+    roofHeight = calculateFloorHeight(jumpStrength, gravity)
     platformRects, startPlatformRect, endPlatformRect = generatePlatforms()
 
     hazard_name, hazard_color = random.choice(hazardOptions)
