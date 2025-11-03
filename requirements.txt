@@ -1,0 +1,8 @@
+# Core Dependencies
+pygame==2.6.1
+
+# Development Dependencies
+# Add any development dependencies here if needed
+# For example:
+# pytest==7.4.0
+# flake8==6.0.0
