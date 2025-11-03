@@ -1,7 +1,5 @@
 # Multi-Universal Postal Service (M.U.P.S)
 
-![Game Logo](assets/logo.png) <!-- Add your logo here if available -->
-
 A 2D platformer where you play as an interdimensional postman delivering packages across procedurally generated dimensions, each with unique physics and challenges.
 
 ## 🎮 Gameplay
