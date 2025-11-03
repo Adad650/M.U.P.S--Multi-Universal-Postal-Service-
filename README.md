@@ -78,4 +78,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 - Built with Python and Pygame
 - Inspired by classic platformers and roguelikes
-- Special thanks to all contributors
