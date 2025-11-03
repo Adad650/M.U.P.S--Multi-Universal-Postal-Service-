@@ -44,7 +44,7 @@ Navigate through various dimensions, each with unique properties, to deliver pac
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/mups-game.git
+   git clone https://https://github.com/Adad650/M.U.P.S--Multi-Universal-Postal-Service-
    cd mups-game
    ```
 2. Install dependencies:
@@ -53,7 +53,7 @@ Navigate through various dimensions, each with unique properties, to deliver pac
    ```
 3. Run the game:
    ```bash
-   python main.py
+   python3 main.py
    ```
 
 ## 🛠 Development
