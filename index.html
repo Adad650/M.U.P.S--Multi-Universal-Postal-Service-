@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>M.U.P.S — Loading Dimension</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 20%, #1d2238, #0b0c14 70%);
+      font-family: "Inter", "Segoe UI", "Trebuchet MS", sans-serif;
+      color: #dfe8ff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    #game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 24px;
+    }
+
+    canvas {
+      background: #11131f;
+      border: 3px solid #2d3048;
+      border-radius: 16px;
+      box-shadow: 0 26px 48px rgba(0, 0, 0, 0.45);
+      outline: none;
+      cursor: pointer;
+    }
+
+    .hint {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.75;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game" width="800" height="600" tabindex="0"></canvas>
+    <p class="hint">Click the canvas to focus • WASD / Space to move • E / Enter to interact</p>
+  </div>
+  <script>
+    (() => {
+      "use strict";
+
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      canvas.addEventListener("click", () => canvas.focus());
+      setTimeout(() => canvas.focus(), 0);
+
+      const keysDown = new Set();
+      const keyPresses = new Set();
+      const handledKeys = new Set([
+        "Space",
+        "KeyW",
+        "KeyA",
+        "KeyS",
+        "KeyD",
+        "KeyE",
+        "Enter",
+        "NumpadEnter",
+        "Escape",
+        "ArrowUp",
+        "ArrowDown"
+      ]);
+
+      window.addEventListener("keydown", (event) => {
+        const { code } = event;
+        if (!keysDown.has(code)) {
+          keyPresses.add(code);
+        }
+        keysDown.add(code);
+        if (handledKeys.has(code)) {
+          event.preventDefault();
+        }
+      });
+
+      window.addEventListener("keyup", (event) => {
+        keysDown.delete(event.code);
+      });
+
+      window.addEventListener("blur", () => {
+        keysDown.clear();
+        keyPresses.clear();
+      });
+
+      const pressedSnapshot = () => {
+        const snapshot = new Set(keyPresses);
+        keyPresses.clear();
+        return snapshot;
+      };
+
+      const wasPressed = (snapshot, codes) => codes.some((code) => snapshot.has(code));
+      const isDown = (codes) => codes.some((code) => keysDown.has(code));
+
+      const screenWidth = canvas.width;
+      const screenHeight = canvas.height;
+
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const randRange = (min, max) => min + Math.random() * (max - min);
+      const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+      const choice = (array) => array[randInt(0, array.length - 1)];
+
+      const colorString = (color) => `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`;
+
+      class Rect {
+        constructor(x = 0, y = 0, width = 0, height = 0) {
+          this.x = x;
+          this.y = y;
+          this.width = width;
+          this.height = height;
+        }
+
+        clone() {
+          return new Rect(this.x, this.y, this.width, this.height);
+        }
+
+        update(x, y, width, height) {
+          this.x = x;
+          this.y = y;
+          this.width = width;
+          this.height = height;
+        }
+
+        inflate(ix, iy) {
+          const newWidth = this.width + ix;
+          const newHeight = this.height + iy;
+          const dx = ix / 2;
+          const dy = iy / 2;
+          return new Rect(this.x - dx, this.y - dy, newWidth, newHeight);
+        }
+
+        colliderect(other) {
+          return !(
+            other.left >= this.right ||
+            other.right <= this.left ||
+            other.top >= this.bottom ||
+            other.bottom <= this.top
+          );
+        }
+
+        get left() {
+          return this.x;
+        }
+
+        set left(value) {
+          this.x = value;
+        }
+
+        get right() {
+          return this.x + this.width;
+        }
+
+        set right(value) {
+          this.x = value - this.width;
+        }
+
+        get top() {
+          return this.y;
+        }
+
+        set top(value) {
+          this.y = value;
+        }
+
+        get bottom() {
+          return this.y + this.height;
+        }
+
+        set bottom(value) {
+          this.y = value - this.height;
+        }
+
+        get centerx() {
+          return this.x + this.width / 2;
+        }
+
+        set centerx(value) {
+          this.x = value - this.width / 2;
+        }
+
+        get centery() {
+          return this.y + this.height / 2;
+        }
+
+        set centery(value) {
+          this.y = value - this.height / 2;
+        }
+
+        get midbottom() {
+          return { x: this.centerx, y: this.bottom };
+        }
+
+        set midbottom(point) {
+          this.centerx = point.x;
+          this.bottom = point.y;
+        }
+      }
+
+      const GameState = Object.freeze({
+        HUB: "hub",
+        CONTRACT_MENU: "contract_menu",
+        SHOP: "shop",
+        LEVEL: "level",
+        WIN: "win",
+        GAME_OVER: "game_over"
+      });
+
+      const roofDefault = 100;
+      let roofHeight = roofDefault;
+      const floorY = 520;
+      const hallLength = 4000;
+      let platformWidthMin = 140;
+      let platformWidthMax = 240;
+      let platformGapMin = 70;
+      let platformGapMax = 160;
+      const platformThickness = 18;
+      const doorClearBuffer = 320;
+      const playerSpeed = 5;
+      let jumpStrength = 9.0;
+      let gravity = 0.6;
+      const minCeilRoom = 60;
+      const minFloorRoom = 80;
+
+      const CONTRACT_OPTION_COUNT = 3;
+      let contracts = [];
+
+      const shopItems = [
+        {
+          key: "premium_routes",
+          name: "Premium Routes License",
+          description: "+20% contract payouts.",
+          cost: 250,
+          type: "mission_bonus",
+          value: 1.2,
+          max_stacks: 1
+        },
+        {
+          key: "extra_life",
+          name: "Auxiliary Drone",
+          description: "+1 life on every mission.",
+          cost: 200,
+          type: "extra_life",
+          value: 1,
+          max_stacks: 1
+        },
+        {
+          key: "color_mint",
+          name: "Suit Paint - Neon Mint",
+          description: "Fresh mint glow for your suit.",
+          cost: 120,
+          type: "player_color",
+          value: [120, 255, 200],
+          max_stacks: 1
+        },
+        {
+          key: "color_violet",
+          name: "Suit Paint - Royal Violet",
+          description: "Stand out with deep royal hues.",
+          cost: 120,
+          type: "player_color",
+          value: [190, 120, 255],
+          max_stacks: 1
+        },
+        {
+          key: "decor_plant",
+          name: "Office Hanging Planter",
+          description: "Adds greenery to the office.",
+          cost: 90,
+          type: "decor",
+          value: "plant",
+          max_stacks: 1
+        },
+        {
+          key: "decor_poster",
+          name: "Skyline Poster",
+          description: "Add a skyline view to the wall.",
+          cost: 110,
+          type: "decor",
+          value: "poster",
+          max_stacks: 1
+        }
+      ];
+
+      const namePrefixes = [
+        "Aurora",
+        "Nova",
+        "Echo",
+        "Titan",
+        "Quantum",
+        "Lumen",
+        "Vortex",
+        "Atlas",
+        "Stellar",
+        "Gale",
+        "Eclipse",
+        "Oracle"
+      ];
+
+      const nameSuffixes = [
+        "Run",
+        "Circuit",
+        "Relay",
+        "Shift",
+        "Route",
+        "Track",
+        "Dash",
+        "Spiral",
+        "Passage",
+        "Traverse",
+        "Vector",
+        "Expedition"
+      ];
+
+      const hazardDescriptors = [
+        "charged dust lanes",
+        "volatile thermal vents",
+        "graviton storms",
+        "magnetic shear pockets",
+        "nebula acid rain",
+        "rogue drone fields",
+        "unstable warp echoes",
+        "fractured bridgework"
+      ];
+
+      const difficultyScale = [
+        [0.45, "Routine Route"],
+        [0.7, "Risky Run"],
+        [0.95, "Hazard Sweep"],
+        [1.2, "Critical Gauntlet"],
+        [10.0, "Impossible Route"]
+      ];
+
+      const doorRect = new Rect(0, 0, 52, 150);
+      const doorColor = [60, 200, 90];
+      const portalRect = new Rect(screenWidth - 180, floorY - 160, 90, 160);
+      const portalInactiveColor = [80, 80, 120];
+      const portalActiveColor = [120, 220, 200];
+      const deskRect = new Rect(60, floorY - 40, 200, 40);
+      const computerBodyRect = new Rect(deskRect.left + 40, deskRect.top - 50, 80, 50);
+      const computerScreenColor = [40, 180, 110];
+      const computerInteractRect = computerBodyRect.inflate(80, 80);
+      const hubBackgroundColor = [26, 26, 32];
+      const hubCeilingColor = [44, 44, 66];
+      const hubFloorColor = [60, 60, 90];
+      const shopCounterRect = new Rect(screenWidth / 2 - 90, floorY - 40, 180, 40);
+      const shopInteractRect = shopCounterRect.inflate(80, 80);
+
+      const playerRect = new Rect(100, 500, 30, 30);
+      let velX = 0;
+      let velY = 0;
+      let onGround = false;
+      let lastGroundedMs = -10000;
+      let lastJumpPressMs = -10000;
+      let cameraX = 0;
+      let dimensionIndex = 0;
+
+      const platformColor = [210, 210, 230];
+      const hazardOptions = [
+        { name: "ACID", color: [80, 200, 80] },
+        { name: "LAVA", color: [220, 60, 40] }
+      ];
+      let bgColor = [30, 30, 38];
+      let ceilingColor = [60, 60, 100];
+      let floorColor = [70, 55, 40];
+      let floorHazardName = "ACID";
+
+      let platformRects = [];
+      let startPlatformRect = new Rect();
+      let endPlatformRect = new Rect();
+      const hubSpawnPoint = { x: deskRect.centerx + 20, y: deskRect.top };
+      const spawnPoint = { x: hubSpawnPoint.x, y: hubSpawnPoint.y };
+
+      const winSummary = {
+        payment: 0,
+        xp: 0,
+        contract: "",
+        moneyTotal: 0,
+        xpTotal: 0,
+        level: 1
+      };
+
+      const gameOverSummary = {
+        contract: "",
+        reason: "Out of lives"
+      };
+
+      const jumpBufferMs = 140;
+      const coyoteTimeMs = 120;
+      const SHOP_VISIBLE_ROWS = 4;
+
+      const FONT = {
+        title: { value: "700 48px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 52 },
+        ui: { value: "600 28px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 30 },
+        small: { value: "500 20px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 22 }
+      };
+
+      const drawText = (text, x, y, color, font, align = "left") => {
+        ctx.save();
+        ctx.font = font.value;
+        ctx.fillStyle = color;
+        ctx.textBaseline = "top";
+        ctx.textAlign = align;
+        ctx.fillText(text, x, y);
+        ctx.restore();
+      };
+
+      const textWidth = (text, font) => {
+        ctx.save();
+        ctx.font = font.value;
+        const width = ctx.measureText(text).width;
+        ctx.restore();
+        return width;
+      };
+
+      const drawRect = (rect, color, offsetX = 0, offsetY = 0) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(rect.x - offsetX, rect.y - offsetY, rect.width, rect.height);
+      };
+
+      const drawStrokeRect = (rect, color, lineWidth = 2, offsetX = 0, offsetY = 0) => {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.strokeRect(rect.x - offsetX, rect.y - offsetY, rect.width, rect.height);
+        ctx.restore();
+      };
+
+      const drawRoundedRect = (rect, radius, fill, stroke, lineWidth = 1) => {
+        const x = rect.x;
+        const y = rect.y;
+        const w = rect.width;
+        const h = rect.height;
+        const r = Math.min(radius, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        if (fill) {
+          ctx.fillStyle = fill;
+          ctx.fill();
+        }
+        if (stroke) {
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = lineWidth;
+          ctx.stroke();
+        }
+      };
+
+      const drawCircle = (x, y, radius, color) => {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+      };
+
+      const drawLine = (x1, y1, x2, y2, color, lineWidth = 2) => {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      const GameData = {
+        gameState: GameState.HUB,
+        portalActive: false,
+        levelNeedsBuild: false,
+        currentContract: null,
+        selectedContractIndex: 0,
+        shopSelectionIndex: 0,
+        shopScrollOffset: 0,
+        playerLevel: 1,
+        playerXP: 0,
+        playerMoney: 0,
+        xpForNextLevel: 120,
+        livesRemaining: 0,
+        maxLives: 0,
+        missionPayMultiplier: 1.0,
+        extraLifeBonus: 0,
+        playerColor: [255, 255, 255],
+        officeDecorStyle: "standard",
+        ownedUpgrades: {},
+        shopMessage: "Welcome to the Supply Depot."
+      };
+
+      const pickDifficultyLabel = (score) => {
+        for (const [threshold, label] of difficultyScale) {
+          if (score <= threshold) {
+            return label;
+          }
+        }
+        return "Unknown Route";
+      };
+
+      const computeJumpHeight = (jumpStrengthValue, gravityValue) => {
+        const g = Math.max(1e-6, Math.abs(gravityValue));
+        return (jumpStrengthValue * jumpStrengthValue) / (2 * g);
+      };
+
+      const calculateFloorHeight = (jumpStrengthValue, gravityValue) => {
+        const jumpHeight = computeJumpHeight(jumpStrengthValue, gravityValue);
+        const minCorridor = minCeilRoom + minFloorRoom + 180;
+        const baseCorridor = minCorridor + Math.trunc(jumpHeight * 0.6);
+        const variation = Math.max(24, Math.trunc(jumpHeight * 0.35));
+        let corridorHeight = baseCorridor + randInt(-variation, variation);
+        corridorHeight = clamp(corridorHeight, minCorridor, floorY - 80);
+        return Math.max(40, floorY - corridorHeight);
+      };
+
+      const applyDimensionPalette = (index) => {
+        const shift = (index * 18) % 120;
+        const clampChannel = (value) => clamp(Math.round(value), 0, 255);
+        const bg = [
+          clampChannel(30 + shift / 2),
+          clampChannel(30 + shift / 3),
+          clampChannel(38 + shift / 2)
+        ];
+        const ceiling = [
+          clampChannel(60 + shift / 2),
+          clampChannel(60 + shift / 4),
+          clampChannel(100 + shift / 2)
+        ];
+        const floor = [
+          clampChannel(70 + shift / 3),
+          clampChannel(55 + shift / 3),
+          clampChannel(40 + shift / 4)
+        ];
+        return [bg, ceiling, floor];
+      };
+
+      const generatePlatforms = () => {
+        const jumpHeight = computeJumpHeight(jumpStrength, gravity);
+        const verticalStep = Math.max(28, Math.trunc(jumpHeight * 0.6));
+        const horizontalStep = Math.max(
+          platformGapMin,
+          Math.min(platformGapMax, Math.trunc(jumpHeight * 1.2))
+        );
+
+        const startY = floorY - minFloorRoom - 40;
+        const minPlatformY = roofHeight + minCeilRoom;
+        const maxPlatformY = floorY - minFloorRoom;
+        const doorStart = hallLength - doorClearBuffer;
+
+        const startPlatform = new Rect(60, startY, 220, platformThickness);
+        const platforms = [startPlatform];
+        let currentX = startPlatform.right + randInt(platformGapMin, horizontalStep);
+        let currentY = startPlatform.y;
+
+        while (currentX < doorStart - platformWidthMin - platformGapMin) {
+          const width = randInt(platformWidthMin, platformWidthMax);
+          currentY += randInt(-verticalStep, verticalStep);
+          currentY = clamp(currentY, minPlatformY, maxPlatformY);
+          platforms.push(new Rect(currentX, currentY, width, platformThickness));
+          currentX += width + randInt(platformGapMin, horizontalStep);
+        }
+
+        const endWidth = Math.max(200, platformWidthMax);
+        const endX = Math.max(doorStart - endWidth - 40, currentX - 80);
+        const endY = clamp(currentY, minPlatformY, maxPlatformY);
+        const endPlatform = new Rect(endX, endY, endWidth, platformThickness);
+        platforms.push(endPlatform);
+
+        return { platforms, start: startPlatform, end: endPlatform };
+      };
+
+      const generateContract = () => {
+        const baseDiff = randRange(0.35, 1.05);
+        const gravityVal = Math.round(
+          clamp(0.45 + baseDiff * 0.35 + randRange(-0.02, 0.02), 0.45, 0.85) * 1000
+        ) / 1000;
+
+        let targetJumpHeight = randRange(220 - baseDiff * 60, 320 - baseDiff * 20);
+        targetJumpHeight = Math.max(160, targetJumpHeight);
+        const jumpStrengthVal = Math.round(Math.sqrt(targetJumpHeight * 2 * gravityVal) * 1000) / 1000;
+
+        let gapMinVal = Math.round(60 + baseDiff * 55 + randRange(-8, 8));
+        gapMinVal = Math.max(50, gapMinVal);
+        const gapSpread = Math.round(50 + baseDiff * 80 + randRange(-12, 12));
+        const gapMaxVal = gapMinVal + Math.max(30, gapSpread);
+
+        let widthMaxVal = Math.round(260 - baseDiff * 110 + randRange(-12, 12));
+        widthMaxVal = Math.max(150, widthMaxVal);
+        let widthMinVal = widthMaxVal - Math.round(40 + baseDiff * 45);
+        widthMinVal = Math.max(90, widthMinVal);
+        if (widthMinVal >= widthMaxVal) {
+          widthMinVal = Math.max(80, widthMaxVal - 20);
+        }
+
+        const baseLives = Math.max(2, 5 - Math.trunc(baseDiff * 3 + Math.random()));
+
+        let difficultyScore = baseDiff;
+        difficultyScore += Math.max(0, (gapMinVal - 70) / 140);
+        difficultyScore += Math.max(0, (200 - widthMaxVal) / 200);
+        difficultyScore += (5 - baseLives) * 0.08;
+        difficultyScore = clamp(difficultyScore, 0.35, 1.4);
+
+        const payment = Math.round(140 + difficultyScore * 340 + randRange(-10, 10));
+        const xpReward = Math.round(80 + difficultyScore * 240);
+
+        const contractName = `${choice(namePrefixes)} ${choice(nameSuffixes)}`;
+        const descriptor = pickDifficultyLabel(difficultyScore);
+        const description = `${descriptor} through ${choice(hazardDescriptors)}.`;
+
+        return {
+          name: contractName,
+          description,
+          payment,
+          xp: xpReward,
+          gravity: gravityVal,
+          jump: jumpStrengthVal,
+          gap_min: gapMinVal,
+          gap_max: gapMaxVal,
+          width_min: widthMinVal,
+          width_max: widthMaxVal,
+          lives: baseLives,
+          difficulty: Math.round(difficultyScore * 100) / 100,
+          label: descriptor
+        };
+      };
+
+      const refreshContracts = () => {
+        contracts = Array.from({ length: CONTRACT_OPTION_COUNT }, generateContract);
+        GameData.selectedContractIndex = 0;
+      };
+
+      const applyContractSettings = (contract) => {
+        gravity = contract.gravity;
+        jumpStrength = contract.jump;
+        platformGapMin = contract.gap_min;
+        platformGapMax = contract.gap_max;
+        platformWidthMin = contract.width_min;
+        platformWidthMax = contract.width_max;
+        GameData.livesRemaining = Math.max(1, contract.lives + GameData.extraLifeBonus);
+        GameData.maxLives = GameData.livesRemaining;
+      };
+
+      const addXP = (amount) => {
+        GameData.playerXP += amount;
+        let leveled = false;
+        while (GameData.playerXP >= GameData.xpForNextLevel) {
+          GameData.playerXP -= GameData.xpForNextLevel;
+          GameData.playerLevel += 1;
+          GameData.xpForNextLevel = Math.max(
+            GameData.xpForNextLevel + 80,
+            Math.trunc(GameData.xpForNextLevel * 1.2)
+          );
+          leveled = true;
+        }
+        return leveled;
+      };
+
+      const prepareContract = (contract) => {
+        GameData.currentContract = contract;
+        applyContractSettings(contract);
+        GameData.portalActive = true;
+        GameData.levelNeedsBuild = true;
+      };
+
+      const startLevelRun = (now) => {
+        if (!GameData.levelNeedsBuild || !GameData.currentContract) {
+          return;
+        }
+        dimensionIndex += 1;
+        rebuildWorld(now);
+        GameData.levelNeedsBuild = false;
+      };
+
+      const recordWin = () => {
+        const contract = GameData.currentContract;
+        if (!contract) {
+          return;
+        }
+        const payout = Math.trunc(contract.payment * GameData.missionPayMultiplier + 0.5);
+        GameData.playerMoney += payout;
+        addXP(contract.xp);
+        winSummary.payment = payout;
+        winSummary.xp = contract.xp;
+        winSummary.contract = contract.name;
+        winSummary.moneyTotal = GameData.playerMoney;
+        winSummary.xpTotal = GameData.playerXP;
+        winSummary.level = GameData.playerLevel;
+        GameData.portalActive = false;
+        GameData.levelNeedsBuild = false;
+        GameData.currentContract = null;
+        GameData.gameState = GameState.WIN;
+      };
+
+      const recordFailure = (reason = "Out of lives") => {
+        if (GameData.currentContract) {
+          gameOverSummary.contract = GameData.currentContract.name;
+        } else {
+          gameOverSummary.contract = "Unknown";
+        }
+        gameOverSummary.reason = reason;
+        GameData.portalActive = false;
+        GameData.currentContract = null;
+        GameData.levelNeedsBuild = false;
+        GameData.gameState = GameState.GAME_OVER;
+      };
+
+      const ownedCount = (key) => GameData.ownedUpgrades[key] || 0;
+
+      const updateShopScroll = () => {
+        if (GameData.shopSelectionIndex < GameData.shopScrollOffset) {
+          GameData.shopScrollOffset = GameData.shopSelectionIndex;
+        } else if (
+          GameData.shopSelectionIndex >=
+          GameData.shopScrollOffset + SHOP_VISIBLE_ROWS
+        ) {
+          GameData.shopScrollOffset =
+            GameData.shopSelectionIndex - SHOP_VISIBLE_ROWS + 1;
+        }
+        const maxOffset = Math.max(0, shopItems.length - SHOP_VISIBLE_ROWS);
+        GameData.shopScrollOffset = clamp(GameData.shopScrollOffset, 0, maxOffset);
+      };
+
+      const purchaseShopItem = (item) => {
+        const stacks = ownedCount(item.key);
+        const maxStacks = item.max_stacks ?? 1;
+        if (stacks >= maxStacks) {
+          GameData.shopMessage = "Already owned.";
+          return;
+        }
+        if (GameData.playerMoney < item.cost) {
+          GameData.shopMessage = "Insufficient funds.";
+          return;
+        }
+        GameData.playerMoney -= item.cost;
+        switch (item.type) {
+          case "mission_bonus":
+            GameData.missionPayMultiplier = Math.round(
+              GameData.missionPayMultiplier * item.value * 100
+            ) / 100;
+            GameData.shopMessage = "Mission payouts increased!";
+            break;
+          case "extra_life":
+            GameData.extraLifeBonus += Math.trunc(item.value);
+            GameData.shopMessage = "Received additional mission life.";
+            break;
+          case "player_color":
+            GameData.playerColor = item.value.slice();
+            GameData.shopMessage = "Suit color updated.";
+            break;
+          case "decor":
+            GameData.officeDecorStyle = item.value;
+            GameData.shopMessage = "Office decor refreshed.";
+            break;
+          default:
+            GameData.shopMessage = "Upgrade applied.";
+            break;
+        }
+        GameData.ownedUpgrades[item.key] = stacks + 1;
+      };
+
+      const rebuildWorld = (now = performance.now()) => {
+        const [bgBase, ceilingBase] = applyDimensionPalette(dimensionIndex);
+        roofHeight = calculateFloorHeight(jumpStrength, gravity);
+        const generated = generatePlatforms();
+        platformRects = generated.platforms;
+        startPlatformRect = generated.start;
+        endPlatformRect = generated.end;
+
+        const hazard = choice(hazardOptions);
+        floorHazardName = hazard.name;
+        bgColor = bgBase;
+        ceilingColor = ceilingBase;
+        floorColor = hazard.color.slice();
+
+        let doorLeft = Math.max(
+          endPlatformRect.centerx - doorRect.width / 2,
+          endPlatformRect.left + 10
+        );
+        doorLeft = Math.min(doorLeft, endPlatformRect.right - doorRect.width - 10);
+        const doorTopDesired = endPlatformRect.top - doorRect.height;
+        const minDoorTop = roofHeight + 20;
+        const doorTop = Math.max(minDoorTop, doorTopDesired);
+        const doorHeightActual = Math.max(60, endPlatformRect.top - doorTop);
+        doorRect.update(doorLeft, doorTop, doorRect.width, doorHeightActual);
+
+        spawnPoint.x = startPlatformRect.centerx;
+        spawnPoint.y = startPlatformRect.top;
+        playerRect.midbottom = { x: spawnPoint.x, y: spawnPoint.y };
+
+        velX = 0;
+        velY = 0;
+        onGround = true;
+        lastGroundedMs = now;
+        lastJumpPressMs = -10000;
+        cameraX = 0;
+
+        document.title = `M.U.P.S — Dimension ${dimensionIndex + 1}`;
+      };
+
+      const resolveHorizontal = (rect, dx, solids) => {
+        rect.x += dx;
+        for (const solid of solids) {
+          if (rect.colliderect(solid)) {
+            if (dx > 0) {
+              rect.right = solid.left;
+            } else if (dx < 0) {
+              rect.left = solid.right;
+            }
+          }
+        }
+        return rect;
+      };
+
+      const resolveVertical = (rect, dy, solids) => {
+        rect.y += dy;
+        let grounded = false;
+        for (const solid of solids) {
+          if (rect.colliderect(solid)) {
+            if (dy > 0) {
+              rect.bottom = solid.top;
+              dy = 0;
+              grounded = true;
+            } else if (dy < 0) {
+              rect.top = solid.bottom;
+              dy = 0;
+            }
+          }
+        }
+        return { rect, grounded, dy };
+      };
+
+      const respawnPlayer = (now, loseLife = false) => {
+        if (loseLife && GameData.gameState === GameState.LEVEL) {
+          GameData.livesRemaining = Math.max(0, GameData.livesRemaining - 1);
+        }
+        playerRect.midbottom = { x: spawnPoint.x, y: spawnPoint.y };
+        velX = 0;
+        velY = 0;
+        onGround = true;
+        lastGroundedMs = now;
+        lastJumpPressMs = -10000;
+        cameraX = 0;
+      };
+
+      const returnToHub = () => {
+        refreshContracts();
+        spawnPoint.x = hubSpawnPoint.x;
+        spawnPoint.y = hubSpawnPoint.y;
+        GameData.livesRemaining = 0;
+        GameData.maxLives = 0;
+        GameData.portalActive = false;
+        GameData.levelNeedsBuild = false;
+        gravity = 0.6;
+        jumpStrength = 9.0;
+        platformGapMin = 70;
+        platformGapMax = 160;
+        platformWidthMin = 140;
+        platformWidthMax = 240;
+        GameData.shopSelectionIndex = 0;
+        GameData.shopScrollOffset = 0;
+        GameData.shopMessage = "Welcome back to the Supply Depot.";
+        GameData.gameState = GameState.HUB;
+        respawnPlayer(performance.now());
+        document.title = "M.U.P.S — Loading Dimension";
+      };
+
+      returnToHub();
+
+      const update = (now, pressed) => {
+        const jumpPressed = wasPressed(pressed, ["Space"]);
+        if (jumpPressed) {
+          lastJumpPressMs = now;
+        }
+        const interactPressed = wasPressed(pressed, ["KeyE"]);
+        const confirmPressed = wasPressed(pressed, ["Enter", "NumpadEnter"]);
+        const backPressed = wasPressed(pressed, ["Escape"]);
+        const menuUp = wasPressed(pressed, ["ArrowUp", "KeyW"]);
+        const menuDown = wasPressed(pressed, ["ArrowDown", "KeyS"]);
+
+        switch (GameData.gameState) {
+          case GameState.CONTRACT_MENU:
+            if (menuUp) {
+              GameData.selectedContractIndex =
+                (GameData.selectedContractIndex - 1 + contracts.length) % contracts.length;
+            }
+            if (menuDown) {
+              GameData.selectedContractIndex =
+                (GameData.selectedContractIndex + 1) % contracts.length;
+            }
+            if (confirmPressed || interactPressed) {
+              prepareContract(contracts[GameData.selectedContractIndex]);
+              GameData.gameState = GameState.HUB;
+            }
+            if (backPressed) {
+              GameData.gameState = GameState.HUB;
+            }
+            velX = 0;
+            velY = 0;
+            onGround = true;
+            cameraX = 0;
+            break;
+          case GameState.SHOP:
+            if (menuUp) {
+              GameData.shopSelectionIndex =
+                (GameData.shopSelectionIndex - 1 + shopItems.length) % shopItems.length;
+              updateShopScroll();
+            }
+            if (menuDown) {
+              GameData.shopSelectionIndex =
+                (GameData.shopSelectionIndex + 1) % shopItems.length;
+              updateShopScroll();
+            }
+            if (confirmPressed || interactPressed) {
+              purchaseShopItem(shopItems[GameData.shopSelectionIndex]);
+            }
+            if (backPressed) {
+              GameData.shopMessage = "Come again soon.";
+              GameData.gameState = GameState.HUB;
+            }
+            velX = 0;
+            velY = 0;
+            onGround = true;
+            cameraX = 0;
+            break;
+          case GameState.WIN:
+            if (confirmPressed || interactPressed || backPressed) {
+              returnToHub();
+            }
+            velX = 0;
+            velY = 0;
+            break;
+          case GameState.GAME_OVER:
+            if (confirmPressed || interactPressed || backPressed) {
+              returnToHub();
+            }
+            velX = 0;
+            velY = 0;
+            break;
+          default:
+            if (GameData.gameState === GameState.LEVEL && GameData.levelNeedsBuild) {
+              startLevelRun(now);
+            }
+
+            if (isDown(["KeyA", "ArrowLeft"])) {
+              velX = -playerSpeed;
+            } else if (isDown(["KeyD", "ArrowRight"])) {
+              velX = playerSpeed;
+            } else {
+              velX = 0;
+            }
+
+            velY += gravity;
+
+            const solids = GameData.gameState === GameState.LEVEL ? platformRects : [];
+
+            resolveHorizontal(playerRect, velX, solids);
+            let groundedNow = false;
+            const verticalResult = resolveVertical(playerRect, velY, solids);
+            if (verticalResult.grounded) {
+              groundedNow = true;
+            }
+            velY = verticalResult.dy;
+
+            if (playerRect.bottom >= floorY) {
+              if (GameData.gameState === GameState.LEVEL) {
+                respawnPlayer(now, true);
+                if (GameData.livesRemaining <= 0) {
+                  recordFailure("Ran out of lives");
+                }
+                return;
+              }
+              playerRect.bottom = floorY;
+              if (velY > 0) {
+                velY = 0;
+              }
+              groundedNow = true;
+            }
+
+            if (GameData.gameState === GameState.LEVEL && playerRect.top <= roofHeight) {
+              playerRect.top = roofHeight;
+              if (velY < 0) {
+                velY = 0;
+              }
+            }
+
+            if (groundedNow) {
+              lastGroundedMs = now;
+            }
+            onGround = groundedNow;
+
+            const pressedRecently = now - lastJumpPressMs <= jumpBufferMs;
+            const hasCoyote = now - lastGroundedMs <= coyoteTimeMs;
+            if ((jumpPressed || pressedRecently) && (onGround || hasCoyote)) {
+              velY = -jumpStrength;
+              onGround = false;
+              lastJumpPressMs = -10000;
+            }
+
+            if (
+              GameData.gameState === GameState.LEVEL &&
+              GameData.currentContract &&
+              playerRect.colliderect(doorRect)
+            ) {
+              recordWin();
+              return;
+            }
+
+            if (GameData.gameState === GameState.HUB) {
+              if (playerRect.left < 0) {
+                playerRect.left = 0;
+              }
+              if (playerRect.right > screenWidth) {
+                playerRect.right = screenWidth;
+              }
+              if (interactPressed) {
+                if (playerRect.colliderect(shopInteractRect)) {
+                  GameData.shopMessage = "Browse our latest upgrades.";
+                  updateShopScroll();
+                  GameData.gameState = GameState.SHOP;
+                } else if (playerRect.colliderect(computerInteractRect)) {
+                  GameData.gameState = GameState.CONTRACT_MENU;
+                }
+              }
+              if (GameData.portalActive && playerRect.colliderect(portalRect)) {
+                GameData.gameState = GameState.LEVEL;
+                GameData.levelNeedsBuild = true;
+              }
+            } else {
+              if (playerRect.left < 0) {
+                playerRect.left = 0;
+              }
+              if (playerRect.right > hallLength) {
+                playerRect.right = hallLength;
+              }
+            }
+
+            cameraX =
+              GameData.gameState === GameState.LEVEL
+                ? clamp(
+                    playerRect.centerx - screenWidth / 2,
+                    0,
+                    hallLength - screenWidth
+                  )
+                : 0;
+            break;
+        }
+      };
+
+      const drawHudLines = (lines) => {
+        ctx.textBaseline = "top";
+        ctx.textAlign = "left";
+        ctx.font = FONT.ui.value;
+        ctx.fillStyle = "#ffffff";
+        lines.forEach((line, idx) => {
+          ctx.fillText(line, 20, 20 + idx * 24);
+        });
+      };
+
+      const drawContractMenu = () => {
+        const panel = new Rect(140, 120, screenWidth - 280, screenHeight - 240);
+        drawRect(panel, "#1c1c2a");
+        drawStrokeRect(panel, "#b4b4d8", 2);
+        drawText("Select Contract", panel.x + 20, panel.y + 18, "#f5f5ff", FONT.title);
+
+        let itemY = panel.y + 80;
+        contracts.forEach((contract, idx) => {
+          const isSelected = idx === GameData.selectedContractIndex;
+          if (isSelected) {
+            const highlight = new Rect(panel.x + 15, itemY - 6, panel.width - 30, 48);
+            drawRoundedRect(highlight, 8, "#475a8c", null);
+          }
+          const effectivePay = Math.trunc(
+            contract.payment * GameData.missionPayMultiplier + 0.5
+          );
+          const nameColor = isSelected ? "#ffffff" : "#c8c8dc";
+          const descColor = isSelected ? "#bebed4" : "#7b7b96";
+          const extraColor = isSelected ? "#dcdcf0" : "#80809a";
+
+          drawText(
+            `${contract.name} — $${effectivePay}`,
+            panel.x + 24,
+            itemY,
+            nameColor,
+            FONT.ui
+          );
+          drawText(
+            contract.description,
+            panel.x + 24,
+            itemY + 22,
+            descColor,
+            FONT.ui
+          );
+          drawText(
+            `XP ${contract.xp} | Lives ${contract.lives} | ${contract.label} (${contract.difficulty.toFixed(2)})`,
+            panel.x + 24,
+            itemY + 42,
+            extraColor,
+            FONT.ui
+          );
+          itemY += 70;
+        });
+
+        drawText(
+          "Enter/E to accept • Esc to cancel • W/S to navigate",
+          panel.x + 20,
+          panel.bottom - 40,
+          "#e6e6f0",
+          FONT.ui
+        );
+      };
+
+      const drawShopMenu = () => {
+        const panel = new Rect(120, 110, screenWidth - 240, screenHeight - 220);
+        drawRoundedRect(panel, 16, "#1d1a2a", "#babee0", 2);
+        drawText("Supply Depot", panel.x + 28, panel.y + 20, "#f5f5ff", FONT.title);
+
+        const fundsText = `Credits: $${GameData.playerMoney}`;
+        drawText(
+          fundsText,
+          panel.x + panel.width - textWidth(fundsText, FONT.ui) - 28,
+          panel.y + 26,
+          "#dcdcff",
+          FONT.ui
+        );
+
+        let listTop = panel.y + 100;
+        const rowHeight = 68;
+        const visibleStart = GameData.shopScrollOffset;
+        const visibleEnd = Math.min(
+          shopItems.length,
+          GameData.shopScrollOffset + SHOP_VISIBLE_ROWS
+        );
+        for (let idx = visibleStart; idx < visibleEnd; idx += 1) {
+          const item = shopItems[idx];
+          const ownedTimes = ownedCount(item.key);
+          const maxStacks = item.max_stacks ?? 1;
+          const available = ownedTimes < maxStacks;
+          const isSelected = idx === GameData.shopSelectionIndex;
+
+          const rowRect = new Rect(panel.x + 24, listTop - 6, panel.width - 48, rowHeight - 12);
+          const baseColor = idx % 2 === 0 ? "#302c44" : "#36304a";
+          drawRoundedRect(rowRect, 10, baseColor, isSelected ? "#8c78c8" : null, 3);
+
+          const titleColor = available ? "#ffffff" : "#a09bae";
+          const descColor = "#c8c8d8";
+          const statusColor = available ? "#caebff" : "#ff9696";
+
+          drawText(item.name, rowRect.x + 16, rowRect.y + 10, titleColor, FONT.ui);
+          drawText(
+            `$${item.cost}`,
+            rowRect.right - textWidth(`$${item.cost}`, FONT.ui) - 16,
+            rowRect.y + 10,
+            statusColor,
+            FONT.ui
+          );
+
+          const detailParts = [item.description];
+          if (maxStacks > 1) {
+            detailParts.push(`${ownedTimes}/${maxStacks} owned`);
+          } else if (ownedTimes) {
+            detailParts.push("already owned");
+          }
+          const detailText = detailParts.join(" · ");
+          drawText(detailText, rowRect.x + 16, rowRect.y + 36, descColor, FONT.small);
+
+          const status = available && isSelected
+            ? "Press Enter to purchase"
+            : ownedTimes
+              ? "Owned"
+              : "Available";
+          drawText(
+            status,
+            rowRect.right - textWidth(status, FONT.small) - 16,
+            rowRect.y + 36,
+            statusColor,
+            FONT.small
+          );
+
+          listTop += rowHeight;
+        }
+
+        if (GameData.shopScrollOffset > 0) {
+          drawText(
+            "▲ more",
+            panel.centerx,
+            panel.y + 72,
+            "#d2d2eb",
+            FONT.small,
+            "center"
+          );
+        }
+        if (visibleEnd < shopItems.length) {
+          drawText(
+            "▼ more",
+            panel.centerx,
+            panel.bottom - 120,
+            "#d2d2eb",
+            FONT.small,
+            "center"
+          );
+        }
+
+        const infoBar = new Rect(panel.x + 24, panel.bottom - 70, panel.width - 48, 48);
+        drawRoundedRect(infoBar, 10, "#2c2740", "#605e8c");
+        drawText(
+          "Enter/E to purchase   •   Esc to exit   •   W/S to browse",
+          infoBar.x + 12,
+          infoBar.y + 6,
+          "#d7d7f0",
+          FONT.small
+        );
+        drawText(
+          GameData.shopMessage,
+          infoBar.x + 12,
+          infoBar.y + 24,
+          "#c8dcff",
+          FONT.small
+        );
+      };
+
+      const drawWinPanel = () => {
+        const panel = new Rect(180, 160, screenWidth - 360, screenHeight - 320);
+        drawRect(panel, "#183321");
+        drawStrokeRect(panel, "#5ac278", 3);
+        drawText(
+          "Delivery Complete!",
+          panel.centerx,
+          panel.y + 24,
+          "#c8ffd6",
+          FONT.title,
+          "center"
+        );
+        const lines = [
+          `Contract: ${winSummary.contract}`,
+          `Earnings: $${winSummary.payment}`,
+          `XP Gained: ${winSummary.xp}`,
+          `Total Funds: $${winSummary.moneyTotal}`,
+          `Level ${winSummary.level}  XP: ${GameData.playerXP}/${GameData.xpForNextLevel}`,
+          "Press Enter/E to return to the office."
+        ];
+        lines.forEach((line, idx) => {
+          drawText(line, panel.x + 30, panel.y + 110 + idx * 30, "#dcffe6", FONT.ui);
+        });
+      };
+
+      const drawGameOverPanel = () => {
+        const panel = new Rect(180, 160, screenWidth - 360, screenHeight - 320);
+        drawRect(panel, "#3d1818");
+        drawStrokeRect(panel, "#c85050", 3);
+        drawText(
+          "Mission Failed",
+          panel.centerx,
+          panel.y + 24,
+          "#ffd3d3",
+          FONT.title,
+          "center"
+        );
+        const lines = [
+          `Contract: ${gameOverSummary.contract}`,
+          `Reason: ${gameOverSummary.reason}`,
+          "Press Enter/E to return to the office."
+        ];
+        lines.forEach((line, idx) => {
+          drawText(line, panel.x + 30, panel.y + 120 + idx * 32, "#ffe0e0", FONT.ui);
+        });
+      };
+
+      const drawHubScene = () => {
+        ctx.fillStyle = colorString(hubBackgroundColor);
+        ctx.fillRect(0, 0, screenWidth, screenHeight);
+        ctx.fillStyle = colorString(hubCeilingColor);
+        ctx.fillRect(0, 0, screenWidth, 160);
+        ctx.fillStyle = colorString(hubFloorColor);
+        ctx.fillRect(0, floorY, screenWidth, screenHeight - floorY);
+
+        const tableColor = "#6e5a78";
+        drawRect(deskRect, tableColor);
+        drawRect(new Rect(deskRect.left + 8, deskRect.bottom, 16, 50), tableColor);
+        drawRect(new Rect(deskRect.right - 24, deskRect.bottom, 16, 50), tableColor);
+
+        drawRect(computerBodyRect, "#101016");
+        drawRect(computerBodyRect.inflate(-14, -18), colorString(computerScreenColor));
+        const keyboardRect = new Rect(
+          computerBodyRect.left - 20,
+          computerBodyRect.bottom,
+          computerBodyRect.width + 40,
+          14
+        );
+        drawRect(keyboardRect, "#a0a0b0");
+
+        const counterColor = "#5a6496";
+        drawRect(shopCounterRect, counterColor);
+        drawRect(new Rect(shopCounterRect.left + 10, shopCounterRect.bottom, 16, 46), counterColor);
+        drawRect(new Rect(shopCounterRect.right - 26, shopCounterRect.bottom, 16, 46), counterColor);
+
+        const signText = "Shop";
+        const signWidth = textWidth(signText, FONT.ui);
+        const signRect = new Rect(
+          shopCounterRect.centerx - signWidth / 2 - 8,
+          shopCounterRect.y - 32,
+          signWidth + 16,
+          32
+        );
+        drawRect(signRect, "#202030");
+        drawText(signText, signRect.centerx, signRect.y + 6, "#e8e8ff", FONT.ui, "center");
+
+        const portalColor = GameData.portalActive
+          ? colorString(portalActiveColor)
+          : colorString(portalInactiveColor);
+        drawRect(portalRect.inflate(12, 12), "#282845");
+        drawRect(portalRect, portalColor);
+        drawStrokeRect(portalRect.inflate(-40, -120), "#ffffff", 2);
+
+        if (GameData.officeDecorStyle === "plant") {
+          const plantPot = new Rect(deskRect.right + 20, deskRect.top - 24, 20, 24);
+          drawRect(plantPot, "#784628");
+          drawCircle(plantPot.centerx, plantPot.top - 10, 18, "#50c864");
+        } else if (GameData.officeDecorStyle === "poster") {
+          const posterRect = new Rect(screenWidth - 260, 60, 140, 90);
+          drawRect(posterRect, "#1e2850");
+          drawRect(posterRect.inflate(-12, -12), "#c0d4ff");
+          drawLine(
+            posterRect.centerx,
+            posterRect.bottom,
+            posterRect.centerx,
+            posterRect.top + 10,
+            "#3c5ca0",
+            2
+          );
+        }
+      };
+
+      const drawLevelScene = () => {
+        ctx.fillStyle = colorString(bgColor);
+        ctx.fillRect(0, 0, screenWidth, screenHeight);
+        ctx.fillStyle = colorString(ceilingColor);
+        ctx.fillRect(-cameraX, 0, hallLength, roofHeight);
+        ctx.fillStyle = colorString(floorColor);
+        ctx.fillRect(-cameraX, floorY, hallLength, screenHeight - floorY);
+        ctx.fillStyle = colorString(platformColor);
+        platformRects.forEach((plat) => {
+          ctx.fillRect(plat.x - cameraX, plat.y, plat.width, plat.height);
+        });
+        ctx.fillStyle = colorString(doorColor);
+        ctx.fillRect(doorRect.x - cameraX, doorRect.y, doorRect.width, doorRect.height);
+      };
+
+      const drawPlayer = () => {
+        ctx.fillStyle = colorString(GameData.playerColor);
+        ctx.fillRect(playerRect.x - cameraX, playerRect.y, playerRect.width, playerRect.height);
+      };
+
+      const draw = () => {
+        switch (GameData.gameState) {
+          case GameState.LEVEL:
+            drawLevelScene();
+            break;
+          default:
+            drawHubScene();
+            break;
+        }
+
+        drawPlayer();
+
+        let hudLines = [];
+        if (GameData.gameState === GameState.LEVEL) {
+          const contract = GameData.currentContract;
+          const basePayment = contract ? contract.payment : 0;
+          const payment = Math.trunc(basePayment * GameData.missionPayMultiplier + 0.5);
+          hudLines = [
+            contract ? contract.name : "Contract",
+            `Lives: ${GameData.livesRemaining}`,
+            `Payment: $${payment}`,
+            `Hazard: ${floorHazardName}`,
+            `Jump Height: ${Math.trunc(computeJumpHeight(jumpStrength, gravity))} px`,
+            `XP: ${GameData.playerXP}/${GameData.xpForNextLevel} (Lv ${GameData.playerLevel})`
+          ];
+        } else if (GameData.gameState === GameState.HUB) {
+          hudLines = [
+            `Level ${GameData.playerLevel}    XP: ${GameData.playerXP}/${GameData.xpForNextLevel}`,
+            `Money: $${GameData.playerMoney}`,
+            "A/D to move  SPACE to jump",
+            "Press E at the computer for contracts",
+            "Press E at the counter for upgrades",
+            `Portal: ${GameData.portalActive ? "ONLINE" : "offline"}`
+          ];
+        } else {
+          hudLines = [
+            `Level ${GameData.playerLevel}    XP: ${GameData.playerXP}/${GameData.xpForNextLevel}`,
+            `Money: $${GameData.playerMoney}`
+          ];
+        }
+        drawHudLines(hudLines);
+
+        if (GameData.gameState === GameState.CONTRACT_MENU) {
+          drawContractMenu();
+        } else if (GameData.gameState === GameState.SHOP) {
+          drawShopMenu();
+        } else if (GameData.gameState === GameState.WIN) {
+          drawWinPanel();
+        } else if (GameData.gameState === GameState.GAME_OVER) {
+          drawGameOverPanel();
+        }
+      };
+
+      let lastTime = performance.now();
+
+      const gameLoop = (timestamp) => {
+        const pressed = pressedSnapshot();
+        update(timestamp, pressed);
+        draw();
+        lastTime = timestamp;
+        requestAnimationFrame(gameLoop);
+      };
+
+      requestAnimationFrame(gameLoop);
+    })();
+  </script>
+</body>
+</html>
