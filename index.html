@@ -12,48 +12,49 @@
       box-sizing: border-box;
     }
 
+    html,
     body {
       margin: 0;
-      background: radial-gradient(circle at 20% 20%, #1d2238, #0b0c14 70%);
-      font-family: "Inter", "Segoe UI", "Trebuchet MS", sans-serif;
-      color: #dfe8ff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+      height: 100%;
+      width: 100%;
     }
 
-    #game-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding: 24px;
+    body {
+      background: radial-gradient(circle at 20% 20%, #1d2238, #090a16 70%);
+      font-family: "Inter", "Segoe UI", "Trebuchet MS", sans-serif;
+      color: #dfe8ff;
+      overflow: hidden;
+      position: relative;
     }
 
     canvas {
-      background: #11131f;
-      border: 3px solid #2d3048;
-      border-radius: 16px;
-      box-shadow: 0 26px 48px rgba(0, 0, 0, 0.45);
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+      border: none;
       outline: none;
       cursor: pointer;
     }
 
     .hint {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 18px;
       margin: 0;
-      font-size: 14px;
-      letter-spacing: 0.04em;
+      text-align: center;
+      font-size: 15px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      opacity: 0.75;
+      opacity: 0.72;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <div id="game-container">
-    <canvas id="game" width="800" height="600" tabindex="0"></canvas>
-    <p class="hint">Click the canvas to focus • WASD / Space to move • E / Enter to interact</p>
-  </div>
+  <canvas id="game" tabindex="0"></canvas>
+  <p class="hint">Click the canvas to focus • WASD / Space to move • E / Enter to interact</p>
   <script>
     (() => {
       "use strict";
@@ -108,8 +109,36 @@
       const wasPressed = (snapshot, codes) => codes.some((code) => snapshot.has(code));
       const isDown = (codes) => codes.some((code) => keysDown.has(code));
 
-      const screenWidth = canvas.width;
-      const screenHeight = canvas.height;
+      const BASE_WIDTH = 800;
+      const BASE_HEIGHT = 600;
+      const screenWidth = BASE_WIDTH;
+      const screenHeight = BASE_HEIGHT;
+
+      let viewportWidth = BASE_WIDTH;
+      let viewportHeight = BASE_HEIGHT;
+      let displayScale = 1;
+      let offsetX = 0;
+      let offsetY = 0;
+      let dpr = window.devicePixelRatio || 1;
+
+      const resizeCanvas = () => {
+        viewportWidth = Math.max(1, window.innerWidth);
+        viewportHeight = Math.max(1, window.innerHeight);
+        dpr = window.devicePixelRatio || 1;
+
+        canvas.style.width = `${viewportWidth}px`;
+        canvas.style.height = `${viewportHeight}px`;
+        canvas.width = Math.max(1, Math.floor(viewportWidth * dpr));
+        canvas.height = Math.max(1, Math.floor(viewportHeight * dpr));
+
+        displayScale = Math.min(viewportWidth / BASE_WIDTH, viewportHeight / BASE_HEIGHT);
+        offsetX = (viewportWidth - BASE_WIDTH * displayScale) / 2;
+        offsetY = (viewportHeight - BASE_HEIGHT * displayScale) / 2;
+      };
+
+      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("orientationchange", resizeCanvas);
+      resizeCanvas();
 
       const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
       const randRange = (min, max) => min + Math.random() * (max - min);
@@ -405,9 +434,9 @@
       const SHOP_VISIBLE_ROWS = 4;
 
       const FONT = {
-        title: { value: "700 48px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 52 },
-        ui: { value: "600 28px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 30 },
-        small: { value: "500 20px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 22 }
+        title: { value: "700 60px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 64 },
+        ui: { value: "600 34px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 36 },
+        small: { value: "500 24px 'Inter', 'Trebuchet MS', sans-serif", lineHeight: 28 }
       };
 
       const drawText = (text, x, y, color, font, align = "left") => {
@@ -1068,84 +1097,86 @@
       };
 
       const drawHudLines = (lines) => {
+        ctx.save();
         ctx.textBaseline = "top";
         ctx.textAlign = "left";
         ctx.font = FONT.ui.value;
         ctx.fillStyle = "#ffffff";
+        const lineSpacing = 36;
         lines.forEach((line, idx) => {
-          ctx.fillText(line, 20, 20 + idx * 24);
+          ctx.fillText(line, 28, 28 + idx * lineSpacing);
         });
+        ctx.restore();
       };
 
       const drawContractMenu = () => {
-        const panel = new Rect(140, 120, screenWidth - 280, screenHeight - 240);
-        drawRect(panel, "#1c1c2a");
-        drawStrokeRect(panel, "#b4b4d8", 2);
-        drawText("Select Contract", panel.x + 20, panel.y + 18, "#f5f5ff", FONT.title);
+        const panel = new Rect(120, 90, screenWidth - 240, screenHeight - 180);
+        drawRoundedRect(panel, 18, "#202033", "#bfc5eb", 3);
+        drawText("Select Contract", panel.x + 28, panel.y + 20, "#f5f5ff", FONT.title);
 
-        let itemY = panel.y + 80;
+        let itemY = panel.y + 104;
         contracts.forEach((contract, idx) => {
           const isSelected = idx === GameData.selectedContractIndex;
           if (isSelected) {
-            const highlight = new Rect(panel.x + 15, itemY - 6, panel.width - 30, 48);
-            drawRoundedRect(highlight, 8, "#475a8c", null);
+            const highlight = new Rect(panel.x + 20, itemY - 16, panel.width - 40, 72);
+            drawRoundedRect(highlight, 14, "#4f68a8", null);
           }
           const effectivePay = Math.trunc(
             contract.payment * GameData.missionPayMultiplier + 0.5
           );
-          const nameColor = isSelected ? "#ffffff" : "#c8c8dc";
-          const descColor = isSelected ? "#bebed4" : "#7b7b96";
-          const extraColor = isSelected ? "#dcdcf0" : "#80809a";
+          const nameColor = isSelected ? "#ffffff" : "#cfd6ff";
+          const descColor = isSelected ? "#c1c8e8" : "#8b90b2";
+          const extraColor = isSelected ? "#e3e7ff" : "#8c8fab";
 
           drawText(
             `${contract.name} — $${effectivePay}`,
-            panel.x + 24,
+            panel.x + 36,
             itemY,
             nameColor,
             FONT.ui
           );
           drawText(
             contract.description,
-            panel.x + 24,
-            itemY + 22,
+            panel.x + 36,
+            itemY + 34,
             descColor,
-            FONT.ui
+            FONT.small
           );
           drawText(
             `XP ${contract.xp} | Lives ${contract.lives} | ${contract.label} (${contract.difficulty.toFixed(2)})`,
-            panel.x + 24,
-            itemY + 42,
+            panel.x + 36,
+            itemY + 60,
             extraColor,
-            FONT.ui
+            FONT.small
           );
-          itemY += 70;
+          itemY += 96;
         });
 
         drawText(
           "Enter/E to accept • Esc to cancel • W/S to navigate",
-          panel.x + 20,
-          panel.bottom - 40,
+          panel.x + 36,
+          panel.bottom - 60,
           "#e6e6f0",
-          FONT.ui
+          FONT.small
         );
       };
 
       const drawShopMenu = () => {
-        const panel = new Rect(120, 110, screenWidth - 240, screenHeight - 220);
-        drawRoundedRect(panel, 16, "#1d1a2a", "#babee0", 2);
-        drawText("Supply Depot", panel.x + 28, panel.y + 20, "#f5f5ff", FONT.title);
+        const panel = new Rect(110, 70, screenWidth - 220, screenHeight - 140);
+        drawRoundedRect(panel, 20, "#211c33", "#c7cbee", 3);
+        drawText("Supply Depot", panel.x + 32, panel.y + 24, "#f5f5ff", FONT.title);
 
         const fundsText = `Credits: $${GameData.playerMoney}`;
         drawText(
           fundsText,
-          panel.x + panel.width - textWidth(fundsText, FONT.ui) - 28,
-          panel.y + 26,
+          panel.x + panel.width - textWidth(fundsText, FONT.ui) - 32,
+          panel.y + 32,
           "#dcdcff",
           FONT.ui
         );
 
-        let listTop = panel.y + 100;
-        const rowHeight = 68;
+        let listTop = panel.y + 120;
+        const rowHeight = 84;
         const visibleStart = GameData.shopScrollOffset;
         const visibleEnd = Math.min(
           shopItems.length,
@@ -1158,19 +1189,19 @@
           const available = ownedTimes < maxStacks;
           const isSelected = idx === GameData.shopSelectionIndex;
 
-          const rowRect = new Rect(panel.x + 24, listTop - 6, panel.width - 48, rowHeight - 12);
-          const baseColor = idx % 2 === 0 ? "#302c44" : "#36304a";
-          drawRoundedRect(rowRect, 10, baseColor, isSelected ? "#8c78c8" : null, 3);
+          const rowRect = new Rect(panel.x + 28, listTop - 10, panel.width - 56, rowHeight - 20);
+          const baseColor = idx % 2 === 0 ? "#342d4a" : "#3b3154";
+          drawRoundedRect(rowRect, 14, baseColor, isSelected ? "#9d88db" : null, 4);
 
-          const titleColor = available ? "#ffffff" : "#a09bae";
-          const descColor = "#c8c8d8";
-          const statusColor = available ? "#caebff" : "#ff9696";
+          const titleColor = available ? "#ffffff" : "#a7a1be";
+          const descColor = "#d2d2e8";
+          const statusColor = available ? "#d0f0ff" : "#ff9c9c";
 
-          drawText(item.name, rowRect.x + 16, rowRect.y + 10, titleColor, FONT.ui);
+          drawText(item.name, rowRect.x + 18, rowRect.y + 12, titleColor, FONT.ui);
           drawText(
             `$${item.cost}`,
-            rowRect.right - textWidth(`$${item.cost}`, FONT.ui) - 16,
-            rowRect.y + 10,
+            rowRect.right - textWidth(`$${item.cost}`, FONT.ui) - 18,
+            rowRect.y + 12,
             statusColor,
             FONT.ui
           );
@@ -1182,7 +1213,7 @@
             detailParts.push("already owned");
           }
           const detailText = detailParts.join(" · ");
-          drawText(detailText, rowRect.x + 16, rowRect.y + 36, descColor, FONT.small);
+          drawText(detailText, rowRect.x + 18, rowRect.y + 48, descColor, FONT.small);
 
           const status = available && isSelected
             ? "Press Enter to purchase"
@@ -1191,8 +1222,8 @@
               : "Available";
           drawText(
             status,
-            rowRect.right - textWidth(status, FONT.small) - 16,
-            rowRect.y + 36,
+            rowRect.right - textWidth(status, FONT.small) - 18,
+            rowRect.y + 48,
             statusColor,
             FONT.small
           );
@@ -1204,8 +1235,8 @@
           drawText(
             "▲ more",
             panel.centerx,
-            panel.y + 72,
-            "#d2d2eb",
+            panel.y + 96,
+            "#d8d8f2",
             FONT.small,
             "center"
           );
@@ -1214,39 +1245,38 @@
           drawText(
             "▼ more",
             panel.centerx,
-            panel.bottom - 120,
-            "#d2d2eb",
+            panel.bottom - 140,
+            "#d8d8f2",
             FONT.small,
             "center"
           );
         }
 
-        const infoBar = new Rect(panel.x + 24, panel.bottom - 70, panel.width - 48, 48);
-        drawRoundedRect(infoBar, 10, "#2c2740", "#605e8c");
+        const infoBar = new Rect(panel.x + 28, panel.bottom - 92, panel.width - 56, 64);
+        drawRoundedRect(infoBar, 14, "#2e2650", "#6f6aa4", 2);
         drawText(
           "Enter/E to purchase   •   Esc to exit   •   W/S to browse",
-          infoBar.x + 12,
-          infoBar.y + 6,
-          "#d7d7f0",
+          infoBar.x + 16,
+          infoBar.y + 10,
+          "#dde0ff",
           FONT.small
         );
         drawText(
           GameData.shopMessage,
-          infoBar.x + 12,
-          infoBar.y + 24,
-          "#c8dcff",
+          infoBar.x + 16,
+          infoBar.y + 34,
+          "#d2e6ff",
           FONT.small
         );
       };
 
       const drawWinPanel = () => {
-        const panel = new Rect(180, 160, screenWidth - 360, screenHeight - 320);
-        drawRect(panel, "#183321");
-        drawStrokeRect(panel, "#5ac278", 3);
+        const panel = new Rect(160, 140, screenWidth - 320, screenHeight - 280);
+        drawRoundedRect(panel, 22, "#163824", "#5fd083", 4);
         drawText(
           "Delivery Complete!",
           panel.centerx,
-          panel.y + 24,
+          panel.y + 28,
           "#c8ffd6",
           FONT.title,
           "center"
@@ -1260,18 +1290,17 @@
           "Press Enter/E to return to the office."
         ];
         lines.forEach((line, idx) => {
-          drawText(line, panel.x + 30, panel.y + 110 + idx * 30, "#dcffe6", FONT.ui);
+          drawText(line, panel.x + 40, panel.y + 120 + idx * 44, "#dcffe6", FONT.ui);
         });
       };
 
       const drawGameOverPanel = () => {
-        const panel = new Rect(180, 160, screenWidth - 360, screenHeight - 320);
-        drawRect(panel, "#3d1818");
-        drawStrokeRect(panel, "#c85050", 3);
+        const panel = new Rect(160, 140, screenWidth - 320, screenHeight - 280);
+        drawRoundedRect(panel, 22, "#3d1a1a", "#ff8585", 4);
         drawText(
           "Mission Failed",
           panel.centerx,
-          panel.y + 24,
+          panel.y + 28,
           "#ffd3d3",
           FONT.title,
           "center"
@@ -1282,7 +1311,7 @@
           "Press Enter/E to return to the office."
         ];
         lines.forEach((line, idx) => {
-          drawText(line, panel.x + 30, panel.y + 120 + idx * 32, "#ffe0e0", FONT.ui);
+          drawText(line, panel.x + 40, panel.y + 140 + idx * 46, "#ffe0e0", FONT.ui);
         });
       };
 
@@ -1372,6 +1401,17 @@
       };
 
       const draw = () => {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.imageSmoothingEnabled = false;
+        ctx.fillStyle = "rgba(9, 10, 22, 0.96)";
+        ctx.fillRect(0, 0, viewportWidth, viewportHeight);
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(displayScale, displayScale);
+
         switch (GameData.gameState) {
           case GameState.LEVEL:
             drawLevelScene();
@@ -1422,6 +1462,8 @@
         } else if (GameData.gameState === GameState.GAME_OVER) {
           drawGameOverPanel();
         }
+
+        ctx.restore();
       };
 
       let lastTime = performance.now();
