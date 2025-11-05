@@ -739,6 +739,7 @@
         GameData.levelNeedsBuild = false;
         GameData.currentContract = null;
         GameData.gameState = GameState.WIN;
+        console.log("ez win, pay up", payout);
       };
 
       const recordFailure = (reason = "Out of lives") => {
@@ -752,6 +753,7 @@
         GameData.currentContract = null;
         GameData.levelNeedsBuild = false;
         GameData.gameState = GameState.GAME_OVER;
+        console.log("mission failed cuz", reason);
       };
 
       const ownedCount = (key) => GameData.ownedUpgrades[key] || 0;
@@ -775,10 +777,12 @@
         const maxStacks = item.max_stacks ?? 1;
         if (stacks >= maxStacks) {
           GameData.shopMessage = "Already owned.";
+          console.log("lol nope, already own", item.name);
           return;
         }
         if (GameData.playerMoney < item.cost) {
           GameData.shopMessage = "Insufficient funds.";
+          console.log("need more cash for", item.name);
           return;
         }
         GameData.playerMoney -= item.cost;
@@ -806,6 +810,8 @@
             break;
         }
         GameData.ownedUpgrades[item.key] = stacks + 1;
+        GameData.shopMessage = GameData.shopMessage;
+        console.log("bought", item.name || item.key);
       };
 
       const rebuildWorld = (now = performance.now()) => {
@@ -882,6 +888,7 @@
       const respawnPlayer = (now, loseLife = false) => {
         if (loseLife && GameData.gameState === GameState.LEVEL) {
           GameData.livesRemaining = Math.max(0, GameData.livesRemaining - 1);
+          console.log("ouch, lives left:", GameData.livesRemaining);
         }
         playerRect.midbottom = { x: spawnPoint.x, y: spawnPoint.y };
         velX = 0;
@@ -893,12 +900,74 @@
       };
 
       const returnToHub = () => {
-        refreshContracts();
+        contracts.length = 0;
+        for (let wow = 0; wow < CONTRACT_OPTION_COUNT; wow += 1) {
+          const baseDiff = randRange(0.35, 1.05);
+          const gravityVal = Math.round(
+            clamp(0.45 + baseDiff * 0.35 + randRange(-0.02, 0.02), 0.45, 0.85) * 1000
+          ) / 1000;
+          let targetJumpHeight = randRange(220 - baseDiff * 60, 320 - baseDiff * 20);
+          if (targetJumpHeight < 160) {
+            targetJumpHeight = 160;
+          }
+          const jumpStrengthVal =
+            Math.round(Math.sqrt(targetJumpHeight * 2 * gravityVal) * 1000) / 1000;
+          let gapMinVal = Math.round(60 + baseDiff * 55 + randRange(-8, 8));
+          if (gapMinVal < 50) {
+            gapMinVal = 50;
+          }
+          const gapSpread = Math.round(50 + baseDiff * 80 + randRange(-12, 12));
+          const gapMaxVal = gapMinVal + Math.max(30, gapSpread);
+          let widthMaxVal = Math.round(260 - baseDiff * 110 + randRange(-12, 12));
+          if (widthMaxVal < 150) {
+            widthMaxVal = 150;
+          }
+          let widthMinVal = widthMaxVal - Math.round(40 + baseDiff * 45);
+          if (widthMinVal < 90) {
+            widthMinVal = 90;
+          }
+          if (widthMinVal >= widthMaxVal) {
+            widthMinVal = Math.max(80, widthMaxVal - 20);
+          }
+          const baseLives = Math.max(2, 5 - Math.trunc(baseDiff * 3 + Math.random()));
+          let difficultyScore = baseDiff;
+          difficultyScore += Math.max(0, (gapMinVal - 70) / 140);
+          difficultyScore += Math.max(0, (200 - widthMaxVal) / 200);
+          difficultyScore += (5 - baseLives) * 0.08;
+          difficultyScore = clamp(difficultyScore, 0.35, 1.4);
+          const payment = Math.round(140 + difficultyScore * 340 + randRange(-10, 10));
+          const xpReward = Math.round(80 + difficultyScore * 240);
+          const contractName = `${choice(namePrefixes)} ${choice(nameSuffixes)}`;
+          const descriptor = pickDifficultyLabel(difficultyScore);
+          const description = `${descriptor} through ${choice(hazardDescriptors)}.`;
+          contracts.push({
+            name: contractName,
+            description,
+            payment,
+            xp: xpReward,
+            gravity: gravityVal,
+            jump: jumpStrengthVal,
+            gap_min: gapMinVal,
+            gap_max: gapMaxVal,
+            width_min: widthMinVal,
+            width_max: widthMaxVal,
+            lives: baseLives,
+            difficulty: Math.round(difficultyScore * 100) / 100,
+            label: descriptor
+          });
+        }
+        if (contracts.length > 1 && Math.random() > 0.4) {
+          contracts.sort(() => (Math.random() > 0.5 ? 1 : -1));
+        }
+        GameData.selectedContractIndex = 0;
         spawnPoint.x = hubSpawnPoint.x;
         spawnPoint.y = hubSpawnPoint.y;
         GameData.livesRemaining = 0;
         GameData.maxLives = 0;
         GameData.portalActive = false;
+        if (GameData.portalActive) {
+          GameData.portalActive = false;
+        }
         GameData.levelNeedsBuild = false;
         gravity = 0.6;
         jumpStrength = 9.0;
@@ -909,9 +978,12 @@
         GameData.shopSelectionIndex = 0;
         GameData.shopScrollOffset = 0;
         GameData.shopMessage = "Welcome back to the Supply Depot.";
+        GameData.shopMessage = GameData.shopMessage;
         GameData.gameState = GameState.HUB;
         respawnPlayer(performance.now());
+        GameData.currentContract = null;
         document.title = "M.U.P.S — Loading Dimension";
+        console.log("home base again lol", contracts.length, "contracts lined up");
       };
 
       returnToHub();
@@ -938,7 +1010,25 @@
                 (GameData.selectedContractIndex + 1) % contracts.length;
             }
             if (confirmPressed || interactPressed) {
-              prepareContract(contracts[GameData.selectedContractIndex]);
+              const picked = contracts[GameData.selectedContractIndex];
+              if (picked) {
+                GameData.currentContract = { ...picked };
+                contracts[GameData.selectedContractIndex] = GameData.currentContract;
+                gravity = picked.gravity;
+                jumpStrength = picked.jump;
+                platformGapMin = picked.gap_min;
+                platformGapMax = picked.gap_max;
+                platformWidthMin = picked.width_min;
+                platformWidthMax = picked.width_max;
+                GameData.livesRemaining = Math.max(
+                  1,
+                  picked.lives + GameData.extraLifeBonus
+                );
+                GameData.maxLives = GameData.livesRemaining;
+                GameData.portalActive = true;
+                GameData.levelNeedsBuild = true;
+                console.log("ugh fine taking", GameData.currentContract.name || "??");
+              }
               GameData.gameState = GameState.HUB;
             }
             if (backPressed) {
@@ -988,7 +1078,98 @@
             break;
           default:
             if (GameData.gameState === GameState.LEVEL && GameData.levelNeedsBuild) {
-              startLevelRun(now);
+              dimensionIndex += 1;
+              const shift = (dimensionIndex * 18) % 120;
+              const clampChannel = (value) =>
+                Math.max(0, Math.min(255, Math.round(value)));
+              bgColor = [
+                clampChannel(30 + shift / 2),
+                clampChannel(30 + shift / 3),
+                clampChannel(38 + shift / 2)
+              ];
+              ceilingColor = [
+                clampChannel(60 + shift / 2),
+                clampChannel(60 + shift / 4),
+                clampChannel(100 + shift / 2)
+              ];
+              const hazard = choice(hazardOptions);
+              floorHazardName = hazard.name;
+              floorColor = hazard.color.slice();
+              const jumpHeight = computeJumpHeight(jumpStrength, gravity);
+              const minCorridor = minCeilRoom + minFloorRoom + 180;
+              const baseCorridor = minCorridor + Math.trunc(jumpHeight * 0.6);
+              const variation = Math.max(24, Math.trunc(jumpHeight * 0.35));
+              let corridorHeight = baseCorridor + randInt(-variation, variation);
+              if (corridorHeight < minCorridor) {
+                corridorHeight = minCorridor;
+              }
+              if (corridorHeight > floorY - 80) {
+                corridorHeight = floorY - 80;
+              }
+              roofHeight = Math.max(40, floorY - corridorHeight);
+              const verticalStep = Math.max(28, Math.trunc(jumpHeight * 0.6));
+              const horizontalStep = Math.max(
+                platformGapMin,
+                Math.min(platformGapMax, Math.trunc(jumpHeight * 1.2))
+              );
+              const startY = floorY - minFloorRoom - 40;
+              const minPlatformY = roofHeight + minCeilRoom;
+              const maxPlatformY = floorY - minFloorRoom;
+              const doorStart = hallLength - doorClearBuffer;
+              const startPlatform = new Rect(60, startY, 220, platformThickness);
+              const platforms = [startPlatform];
+              let currentX = startPlatform.right + randInt(platformGapMin, horizontalStep);
+              let currentY = startPlatform.y;
+              while (currentX < doorStart - platformWidthMin - platformGapMin) {
+                const width = randInt(platformWidthMin, platformWidthMax);
+                currentY += randInt(-verticalStep, verticalStep);
+                if (currentY < minPlatformY) {
+                  currentY = minPlatformY;
+                }
+                if (currentY > maxPlatformY) {
+                  currentY = maxPlatformY;
+                }
+                platforms.push(new Rect(currentX, currentY, width, platformThickness));
+                currentX += width + randInt(platformGapMin, horizontalStep);
+              }
+              const endWidth = Math.max(200, platformWidthMax);
+              const endX = Math.max(doorStart - endWidth - 40, currentX - 80);
+              let endY = currentY;
+              if (endY < minPlatformY) {
+                endY = minPlatformY;
+              }
+              if (endY > maxPlatformY) {
+                endY = maxPlatformY;
+              }
+              const endPlatform = new Rect(endX, endY, endWidth, platformThickness);
+              platforms.push(endPlatform);
+              platformRects = platforms;
+              startPlatformRect = startPlatform;
+              endPlatformRect = endPlatform;
+              let doorLeft = Math.max(
+                endPlatformRect.centerx - doorRect.width / 2,
+                endPlatformRect.left + 10
+              );
+              if (doorLeft > endPlatformRect.right - doorRect.width - 10) {
+                doorLeft = endPlatformRect.right - doorRect.width - 10;
+              }
+              const doorTopDesired = endPlatformRect.top - doorRect.height;
+              const minDoorTop = roofHeight + 20;
+              const doorTop = doorTopDesired > minDoorTop ? doorTopDesired : minDoorTop;
+              const doorHeightActual = Math.max(60, endPlatformRect.top - doorTop);
+              doorRect.update(doorLeft, doorTop, doorRect.width, doorHeightActual);
+              spawnPoint.x = startPlatformRect.centerx;
+              spawnPoint.y = startPlatformRect.top;
+              playerRect.midbottom = { x: spawnPoint.x, y: spawnPoint.y };
+              velX = 0;
+              velY = 0;
+              onGround = true;
+              lastGroundedMs = now;
+              lastJumpPressMs = -10000;
+              cameraX = 0;
+              document.title = `M.U.P.S — Dimension ${dimensionIndex + 1}`;
+              GameData.levelNeedsBuild = false;
+              console.log("dimension", dimensionIndex + 1, "let's go??", floorHazardName);
             }
 
             if (isDown(["KeyA", "ArrowLeft"])) {
@@ -1161,10 +1342,12 @@
         );
       };
 
+
       const drawShopMenu = () => {
         const panel = new Rect(110, 70, screenWidth - 220, screenHeight - 140);
         drawRoundedRect(panel, 20, "#211c33", "#c7cbee", 3);
         drawText("Supply Depot", panel.x + 32, panel.y + 24, "#f5f5ff", FONT.title);
+
 
         const fundsText = `Credits: $${GameData.playerMoney}`;
         drawText(
@@ -1175,6 +1358,7 @@
           FONT.ui
         );
 
+
         let listTop = panel.y + 120;
         const rowHeight = 84;
         const visibleStart = GameData.shopScrollOffset;
@@ -1182,6 +1366,7 @@
           shopItems.length,
           GameData.shopScrollOffset + SHOP_VISIBLE_ROWS
         );
+
         for (let idx = visibleStart; idx < visibleEnd; idx += 1) {
           const item = shopItems[idx];
           const ownedTimes = ownedCount(item.key);
@@ -1189,13 +1374,16 @@
           const available = ownedTimes < maxStacks;
           const isSelected = idx === GameData.shopSelectionIndex;
 
+
           const rowRect = new Rect(panel.x + 28, listTop - 10, panel.width - 56, rowHeight - 20);
           const baseColor = idx % 2 === 0 ? "#342d4a" : "#3b3154";
           drawRoundedRect(rowRect, 14, baseColor, isSelected ? "#9d88db" : null, 4);
 
+
           const titleColor = available ? "#ffffff" : "#a7a1be";
           const descColor = "#d2d2e8";
           const statusColor = available ? "#d0f0ff" : "#ff9c9c";
+
 
           drawText(item.name, rowRect.x + 18, rowRect.y + 12, titleColor, FONT.ui);
           drawText(
@@ -1206,12 +1394,14 @@
             FONT.ui
           );
 
+
           const detailParts = [item.description];
           if (maxStacks > 1) {
             detailParts.push(`${ownedTimes}/${maxStacks} owned`);
           } else if (ownedTimes) {
             detailParts.push("already owned");
           }
+
           const detailText = detailParts.join(" · ");
           drawText(detailText, rowRect.x + 18, rowRect.y + 48, descColor, FONT.small);
 
@@ -1227,6 +1417,7 @@
             statusColor,
             FONT.small
           );
+
 
           listTop += rowHeight;
         }
@@ -1436,6 +1627,7 @@
             `Jump Height: ${Math.trunc(computeJumpHeight(jumpStrength, gravity))} px`,
             `XP: ${GameData.playerXP}/${GameData.xpForNextLevel} (Lv ${GameData.playerLevel})`
           ];
+
         } else if (GameData.gameState === GameState.HUB) {
           hudLines = [
             `Level ${GameData.playerLevel}    XP: ${GameData.playerXP}/${GameData.xpForNextLevel}`,
@@ -1445,20 +1637,25 @@
             "Press E at the counter for upgrades",
             `Portal: ${GameData.portalActive ? "ONLINE" : "offline"}`
           ];
+
         } else {
           hudLines = [
             `Level ${GameData.playerLevel}    XP: ${GameData.playerXP}/${GameData.xpForNextLevel}`,
             `Money: $${GameData.playerMoney}`
           ];
+
         }
         drawHudLines(hudLines);
 
         if (GameData.gameState === GameState.CONTRACT_MENU) {
           drawContractMenu();
+
         } else if (GameData.gameState === GameState.SHOP) {
           drawShopMenu();
+
         } else if (GameData.gameState === GameState.WIN) {
           drawWinPanel();
+
         } else if (GameData.gameState === GameState.GAME_OVER) {
           drawGameOverPanel();
         }
@@ -1469,6 +1666,7 @@
       let lastTime = performance.now();
 
       const gameLoop = (timestamp) => {
+      
         const pressed = pressedSnapshot();
         update(timestamp, pressed);
         draw();

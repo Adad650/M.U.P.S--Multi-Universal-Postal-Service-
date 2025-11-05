@@ -1,2 +1,6 @@
 __pycache__/worldGen.cpython-313.pyc
-
+.DS_Store
+ignore/test.py
+.gitignore
+.DS_Store
+.DS_Store
