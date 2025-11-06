@@ -10,7 +10,7 @@ uiFont = pygame.font.Font(None, 28)
 titleFont = pygame.font.Font(None, 48)
 smallFont = pygame.font.Font(None, 22)
 
-roofHeight = 100
+roofHeight = 0
 floorY = 520
 hallLength = 4000
 platformWidthMin = 140
@@ -108,6 +108,10 @@ bgColor = (30, 30, 38)
 ceilingColor = (60, 60, 100)
 floorColor = (70, 55, 40)
 floorHazardName = "ACID"
+levelSkyTop = 80
+levelBackgroundSurface = None
+levelGlowSurface = None
+backdropOrbs = []
 
 platformRects = []
 startPlatformRect = pygame.Rect(0, 0, 0, 0)
@@ -120,6 +124,25 @@ gameOverSummary = {"contract": "", "reason": "Out of lives"}
 
 jumpBufferMs = 140
 coyoteTimeMs = 120
+
+
+def mix_colors(color_a, color_b, t):
+    return tuple(int(color_a[i] + (color_b[i] - color_a[i]) * t) for i in range(3))
+
+
+def create_vertical_gradient(width, height, top_color, bottom_color, top_alpha=255, bottom_alpha=255):
+    height = max(1, int(height))
+    surface = pygame.Surface((int(width), height), pygame.SRCALPHA)
+    if height == 1:
+        color = (*top_color, int(top_alpha))
+        surface.fill(color)
+        return surface.convert_alpha()
+    for y in range(height):
+        t = y / (height - 1)
+        color = mix_colors(top_color, bottom_color, t)
+        alpha = int(top_alpha + (bottom_alpha - top_alpha) * t)
+        surface.fill((*color, alpha), rect=pygame.Rect(0, y, width, 1))
+    return surface.convert_alpha()
 
 
 def returnToHub():
@@ -348,6 +371,11 @@ while True:
             hazard_name, hazard_color = random.choice(hazardOptions)
             floorHazardName = hazard_name
             floorColor = hazard_color
+            platformColor = (
+                clamp_channel(190 + shift // 3),
+                clamp_channel(200 + shift // 4),
+                clamp_channel(235 + shift // 5),
+            )
             jumpHeight = (jumpStrength * jumpStrength) / (2.0 * max(1e-6, abs(gravity)))
             lastJumpHeight = jumpHeight
             min_corridor = minCeilRoom + minFloorRoom + 180
@@ -358,11 +386,50 @@ while True:
                 corridor_height = min_corridor
             if corridor_height > floorY - 80:
                 corridor_height = floorY - 80
-            roofHeight = max(40, floorY - corridor_height)
+            levelSkyTop = max(40, floorY - corridor_height)
+            roofHeight = 0
+            sky_top_color = (
+                clamp_channel(ceilingColor[0] + 40),
+                clamp_channel(ceilingColor[1] + 30),
+                clamp_channel(ceilingColor[2] + 60),
+            )
+            sky_bottom_color = (
+                clamp_channel(bgColor[0] - 12),
+                clamp_channel(bgColor[1] - 6),
+                clamp_channel(bgColor[2] + 40),
+            )
+            glow_target_color = (
+                clamp_channel(floorColor[0] + 60),
+                clamp_channel(floorColor[1] + 50),
+                clamp_channel(floorColor[2] + 40),
+            )
+            # Pre-render sky gradient and parallax glow for a cleaner backdrop.
+            levelBackgroundSurface = create_vertical_gradient(screenWidth, screenHeight, sky_top_color, sky_bottom_color)
+            levelGlowSurface = create_vertical_gradient(screenWidth, 180, sky_top_color, glow_target_color, 0, 170)
+            backdropOrbs = []
+            # Build a handful of parallax lights to float behind the action.
+            for _ in range(24):
+                orb_x = random.randint(0, hallLength)
+                orb_y = random.randint(int(max(20, levelSkyTop * 0.6)), int(floorY * 0.65))
+                radius = random.randint(6, 18)
+                tint_amount = random.uniform(0.25, 0.75)
+                orb_color = mix_colors(sky_top_color, glow_target_color, tint_amount)
+                orb_alpha = int(random.uniform(120, 210))
+                orb_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+                pygame.draw.circle(orb_surface, (*orb_color, orb_alpha), (radius, radius), radius)
+                backdropOrbs.append(
+                    {
+                        "x": orb_x,
+                        "y": orb_y,
+                        "radius": radius,
+                        "parallax": random.uniform(0.18, 0.42),
+                        "surface": orb_surface.convert_alpha(),
+                    }
+                )
             vertical_step = max(28, int(jumpHeight * 0.6))
             horizontal_step = max(platformGapMin, min(platformGapMax, int(jumpHeight * 1.2)))
             start_y = floorY - minFloorRoom - 40
-            min_platform_y = roofHeight + minCeilRoom
+            min_platform_y = max(100, levelSkyTop + minCeilRoom)
             max_platform_y = floorY - minFloorRoom
             door_start = hallLength - doorClearBuffer
             start_platform = pygame.Rect(60, start_y, 220, platformThickness)
@@ -390,7 +457,7 @@ while True:
             if door_left > endPlatformRect.right - doorWidth - 10:
                 door_left = endPlatformRect.right - doorWidth - 10
             door_top_desired = endPlatformRect.top - doorHeight
-            min_door_top = roofHeight + 20
+            min_door_top = max(80, levelSkyTop + 20)
             door_top = door_top_desired if door_top_desired > min_door_top else min_door_top
             door_height_actual = max(60, endPlatformRect.top - door_top)
             doorRect.update(door_left, door_top, doorWidth, door_height_actual)
@@ -459,11 +526,6 @@ while True:
                 velY = 0
             groundedNow = True
 
-        if gameState == GameState.LEVEL and playerRect.top <= roofHeight:
-            playerRect.top = roofHeight
-            if velY < 0:
-                velY = 0
-
         if groundedNow:
             lastGroundedMs = now
         onGround = groundedNow
@@ -531,9 +593,21 @@ while True:
         cameraX = 0 if gameState != GameState.LEVEL else max(0, min(playerRect.centerx - screenWidth // 2, hallLength - screenWidth))
 
     if gameState == GameState.LEVEL:
-        screen.fill(bgColor)
-        pygame.draw.rect(screen, ceilingColor, (-cameraX, 0, hallLength, roofHeight))
+        if levelBackgroundSurface:
+            screen.blit(levelBackgroundSurface, (0, 0))
+        else:
+            screen.fill(bgColor)
+        if backdropOrbs:
+            for orb in backdropOrbs:
+                draw_x = orb["x"] - cameraX * orb["parallax"] - orb["radius"]
+                if draw_x > screenWidth or draw_x < -orb["radius"] * 2:
+                    continue
+                draw_y = orb["y"] - orb["radius"]
+                screen.blit(orb["surface"], (draw_x, draw_y))
         pygame.draw.rect(screen, floorColor, (-cameraX, floorY, hallLength, screenHeight - floorY))
+        if levelGlowSurface:
+            glow_y = floorY - levelGlowSurface.get_height()
+            screen.blit(levelGlowSurface, (0, glow_y))
         for plat in platformRects:
             pygame.draw.rect(screen, platformColor, (plat.x - cameraX, plat.y, plat.width, plat.height))
         pygame.draw.rect(screen, doorColor, (doorRect.x - cameraX, doorRect.y, doorRect.width, doorRect.height))

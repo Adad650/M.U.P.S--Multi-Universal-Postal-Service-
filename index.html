@@ -146,6 +146,63 @@
       const choice = (array) => array[randInt(0, array.length - 1)];
 
       const colorString = (color) => `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`;
+      const clampColorChannel = (value) => clamp(Math.round(value), 0, 255);
+      const addColor = (color, deltas) =>
+        color.map((channel, index) => clampColorChannel(channel + (deltas[index] ?? 0)));
+      const mixColors = (a, b, t) =>
+        a.map((channel, index) => clampColorChannel(channel + (b[index] - channel) * t));
+      const createGradientCanvas = (
+        width,
+        height,
+        topColor,
+        bottomColor,
+        topAlpha = 1,
+        bottomAlpha = 1
+      ) => {
+        const gradientCanvas = document.createElement("canvas");
+        gradientCanvas.width = Math.max(1, Math.round(width));
+        gradientCanvas.height = Math.max(1, Math.round(height));
+        const gctx = gradientCanvas.getContext("2d");
+        const gradient = gctx.createLinearGradient(0, 0, 0, gradientCanvas.height);
+        const toRgba = (color, alpha) =>
+          `rgba(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])}, ${alpha})`;
+        gradient.addColorStop(0, toRgba(topColor, topAlpha));
+        gradient.addColorStop(1, toRgba(bottomColor, bottomAlpha));
+        gctx.fillStyle = gradient;
+        gctx.fillRect(0, 0, gradientCanvas.width, gradientCanvas.height);
+        return gradientCanvas;
+      };
+      const rebuildBackdropOrbs = (count, topY, skyTopColor, glowColor) => {
+        const orbs = [];
+        for (let i = 0; i < count; i += 1) {
+          const radius = randInt(6, 18);
+          orbs.push({
+            x: randRange(0, hallLength),
+            y: randRange(Math.max(20, topY * 0.6), floorY * 0.65),
+            radius,
+            parallax: randRange(0.18, 0.42),
+            color: mixColors(skyTopColor, glowColor, Math.random() * 0.5 + 0.25),
+            alpha: randRange(0.45, 0.85)
+          });
+        }
+        return orbs;
+      };
+      const updateLevelVisuals = () => {
+        const skyTopColor = addColor(ceilingColor, [40, 30, 60]);
+        const skyBottomColor = addColor(bgColor, [-12, -6, 40]);
+        const glowTarget = addColor(floorColor, [60, 50, 40]);
+        levelGradientCanvas = createGradientCanvas(
+          screenWidth,
+          screenHeight,
+          skyTopColor,
+          skyBottomColor,
+          1,
+          1
+        );
+        levelGlowCanvas = createGradientCanvas(screenWidth, 180, skyTopColor, glowTarget, 0, 0.7);
+        backdropOrbs = rebuildBackdropOrbs(24, levelSkyTop, skyTopColor, glowTarget);
+        platformColor = mixColors([210, 210, 230], glowTarget, 0.35);
+      };
 
       class Rect {
         constructor(x = 0, y = 0, width = 0, height = 0) {
@@ -250,8 +307,8 @@
         GAME_OVER: "game_over"
       });
 
-      const roofDefault = 100;
-      let roofHeight = roofDefault;
+      let roofHeight = 0;
+      let levelSkyTop = 100;
       const floorY = 520;
       const hallLength = 4000;
       let platformWidthMin = 140;
@@ -399,7 +456,7 @@
       let cameraX = 0;
       let dimensionIndex = 0;
 
-      const platformColor = [210, 210, 230];
+      let platformColor = [210, 210, 230];
       const hazardOptions = [
         { name: "ACID", color: [80, 200, 80] },
         { name: "LAVA", color: [220, 60, 40] }
@@ -408,6 +465,9 @@
       let ceilingColor = [60, 60, 100];
       let floorColor = [70, 55, 40];
       let floorHazardName = "ACID";
+      let levelGradientCanvas = null;
+      let levelGlowCanvas = null;
+      let backdropOrbs = [];
 
       let platformRects = [];
       let startPlatformRect = new Rect();
@@ -553,7 +613,7 @@
         return (jumpStrengthValue * jumpStrengthValue) / (2 * g);
       };
 
-      const calculateFloorHeight = (jumpStrengthValue, gravityValue) => {
+      const calculateLevelSkyTop = (jumpStrengthValue, gravityValue) => {
         const jumpHeight = computeJumpHeight(jumpStrengthValue, gravityValue);
         const minCorridor = minCeilRoom + minFloorRoom + 180;
         const baseCorridor = minCorridor + Math.trunc(jumpHeight * 0.6);
@@ -593,7 +653,7 @@
         );
 
         const startY = floorY - minFloorRoom - 40;
-        const minPlatformY = roofHeight + minCeilRoom;
+        const minPlatformY = Math.max(100, levelSkyTop + minCeilRoom);
         const maxPlatformY = floorY - minFloorRoom;
         const doorStart = hallLength - doorClearBuffer;
 
@@ -816,7 +876,8 @@
 
       const rebuildWorld = (now = performance.now()) => {
         const [bgBase, ceilingBase] = applyDimensionPalette(dimensionIndex);
-        roofHeight = calculateFloorHeight(jumpStrength, gravity);
+        levelSkyTop = calculateLevelSkyTop(jumpStrength, gravity);
+        roofHeight = 0;
         const generated = generatePlatforms();
         platformRects = generated.platforms;
         startPlatformRect = generated.start;
@@ -827,6 +888,7 @@
         bgColor = bgBase;
         ceilingColor = ceilingBase;
         floorColor = hazard.color.slice();
+        updateLevelVisuals();
 
         let doorLeft = Math.max(
           endPlatformRect.centerx - doorRect.width / 2,
@@ -834,7 +896,7 @@
         );
         doorLeft = Math.min(doorLeft, endPlatformRect.right - doorRect.width - 10);
         const doorTopDesired = endPlatformRect.top - doorRect.height;
-        const minDoorTop = roofHeight + 20;
+        const minDoorTop = Math.max(80, levelSkyTop + 20);
         const doorTop = Math.max(minDoorTop, doorTopDesired);
         const doorHeightActual = Math.max(60, endPlatformRect.top - doorTop);
         doorRect.update(doorLeft, doorTop, doorRect.width, doorHeightActual);
@@ -1095,6 +1157,7 @@
               const hazard = choice(hazardOptions);
               floorHazardName = hazard.name;
               floorColor = hazard.color.slice();
+              updateLevelVisuals();
               const jumpHeight = computeJumpHeight(jumpStrength, gravity);
               const minCorridor = minCeilRoom + minFloorRoom + 180;
               const baseCorridor = minCorridor + Math.trunc(jumpHeight * 0.6);
@@ -1106,14 +1169,15 @@
               if (corridorHeight > floorY - 80) {
                 corridorHeight = floorY - 80;
               }
-              roofHeight = Math.max(40, floorY - corridorHeight);
+              levelSkyTop = Math.max(40, floorY - corridorHeight);
+              roofHeight = 0;
               const verticalStep = Math.max(28, Math.trunc(jumpHeight * 0.6));
               const horizontalStep = Math.max(
                 platformGapMin,
                 Math.min(platformGapMax, Math.trunc(jumpHeight * 1.2))
               );
               const startY = floorY - minFloorRoom - 40;
-              const minPlatformY = roofHeight + minCeilRoom;
+              const minPlatformY = Math.max(100, levelSkyTop + minCeilRoom);
               const maxPlatformY = floorY - minFloorRoom;
               const doorStart = hallLength - doorClearBuffer;
               const startPlatform = new Rect(60, startY, 220, platformThickness);
@@ -1154,7 +1218,7 @@
                 doorLeft = endPlatformRect.right - doorRect.width - 10;
               }
               const doorTopDesired = endPlatformRect.top - doorRect.height;
-              const minDoorTop = roofHeight + 20;
+              const minDoorTop = Math.max(80, levelSkyTop + 20);
               const doorTop = doorTopDesired > minDoorTop ? doorTopDesired : minDoorTop;
               const doorHeightActual = Math.max(60, endPlatformRect.top - doorTop);
               doorRect.update(doorLeft, doorTop, doorRect.width, doorHeightActual);
@@ -1207,12 +1271,6 @@
               groundedNow = true;
             }
 
-            if (GameData.gameState === GameState.LEVEL && playerRect.top <= roofHeight) {
-              playerRect.top = roofHeight;
-              if (velY < 0) {
-                velY = 0;
-              }
-            }
 
             if (groundedNow) {
               lastGroundedMs = now;
@@ -1574,8 +1632,6 @@
       const drawLevelScene = () => {
         ctx.fillStyle = colorString(bgColor);
         ctx.fillRect(0, 0, screenWidth, screenHeight);
-        ctx.fillStyle = colorString(ceilingColor);
-        ctx.fillRect(-cameraX, 0, hallLength, roofHeight);
         ctx.fillStyle = colorString(floorColor);
         ctx.fillRect(-cameraX, floorY, hallLength, screenHeight - floorY);
         ctx.fillStyle = colorString(platformColor);
