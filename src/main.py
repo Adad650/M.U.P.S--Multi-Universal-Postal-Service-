@@ -1,3 +1,4 @@
+import os
 import pygame, sys, random
 from enum import Enum, auto
 
@@ -9,6 +10,60 @@ clock = pygame.time.Clock()
 uiFont = pygame.font.Font(None, 28)
 titleFont = pygame.font.Font(None, 48)
 smallFont = pygame.font.Font(None, 22)
+
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+PLAYER_SPRITE_SHEET_PATH = os.path.join(
+    BASE_DIR, "assets", "walking", "postman_walk_pixel_sheet.png"
+)
+PLAYER_SPRITE_FRAME_COUNT = 16
+PLAYER_SPRITE_SCALE = 0.45
+PLAYER_ANIM_FRAME_TIME = 90
+
+
+def load_player_walk_frames(sheet_path):
+    sheet = pygame.image.load(sheet_path).convert_alpha()
+    frame_width = sheet.get_width() // PLAYER_SPRITE_FRAME_COUNT
+    frame_height = sheet.get_height()
+    draw_width = max(1, int(round(frame_width * PLAYER_SPRITE_SCALE)))
+    draw_height = max(1, int(round(frame_height * PLAYER_SPRITE_SCALE)))
+    scale_x = draw_width / frame_width
+    scale_y = draw_height / frame_height
+    frames = []
+    offsets = []
+    for frame_index in range(PLAYER_SPRITE_FRAME_COUNT):
+        frame_surface = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+        frame_surface.blit(
+            sheet,
+            (0, 0),
+            pygame.Rect(frame_index * frame_width, 0, frame_width, frame_height),
+        )
+        bbox = frame_surface.get_bounding_rect()
+        offset_center = 0.0
+        if bbox.width and bbox.height:
+            art_center = bbox.x + bbox.width / 2
+            offset_center = art_center - (frame_width / 2)
+        offsets.append(int(round(offset_center * scale_x)))
+        scaled = pygame.transform.scale(frame_surface, (draw_width, draw_height))
+        frames.append(scaled)
+    return frames, offsets
+
+
+try:
+    player_walk_frames_right, player_walk_offsets_right = load_player_walk_frames(
+        PLAYER_SPRITE_SHEET_PATH
+    )
+except Exception as exc:  # pragma: no cover - best effort graphics load
+    print("Unable to load walk animation:", exc)
+    player_walk_frames_right = []
+    player_walk_offsets_right = []
+
+player_walk_frames_left = [
+    pygame.transform.flip(frame, True, False) for frame in player_walk_frames_right
+]
+player_walk_offsets_left = [-offset for offset in player_walk_offsets_right]
+player_anim_index = 0
+player_anim_timer = 0
+player_facing = 1
 
 roofHeight = 0
 floorY = 520
@@ -798,6 +853,23 @@ while True:
 
         cameraX = 0 if gameState != GameState.LEVEL else max(0, min(playerRect.centerx - screenWidth // 2, hallLength - screenWidth))
 
+    is_walking = abs(velX) > 0.1
+    if velX > 0:
+        player_facing = 1
+    elif velX < 0:
+        player_facing = -1
+
+    if player_walk_frames_right:
+        if is_walking:
+            player_anim_timer += dt
+            frame_count = len(player_walk_frames_right)
+            if player_anim_timer >= PLAYER_ANIM_FRAME_TIME:
+                player_anim_timer %= PLAYER_ANIM_FRAME_TIME
+                player_anim_index = (player_anim_index + 1) % frame_count
+        else:
+            player_anim_index = 0
+            player_anim_timer = 0
+
     if gameState == GameState.LEVEL:
         if levelBackgroundSurface:
             screen.blit(levelBackgroundSurface, (0, 0))
@@ -857,8 +929,18 @@ while True:
             pygame.draw.rect(screen, (190, 210, 255), posterRect.inflate(-12, -12))
             pygame.draw.line(screen, (60, 90, 150), posterRect.midbottom, (posterRect.centerx, posterRect.top + 10), 2)
 
-    playerDrawRect = pygame.Rect(playerRect.x - cameraX, playerRect.y, playerRect.width, playerRect.height)
-    pygame.draw.rect(screen, playerColor, playerDrawRect)
+    if player_walk_frames_right:
+        sprites = player_walk_frames_right if player_facing >= 0 else player_walk_frames_left
+        offsets = player_walk_offsets_right if player_facing >= 0 else player_walk_offsets_left
+        frame_index = player_anim_index % len(sprites) if sprites else 0
+        sprite = sprites[frame_index]
+        offset_x = offsets[frame_index] if offsets else 0
+        sprite_x = playerRect.centerx - cameraX - sprite.get_width() // 2 - offset_x
+        sprite_y = playerRect.bottom - sprite.get_height()
+        screen.blit(sprite, (sprite_x, sprite_y))
+    else:
+        playerDrawRect = pygame.Rect(playerRect.x - cameraX, playerRect.y, playerRect.width, playerRect.height)
+        pygame.draw.rect(screen, playerColor, playerDrawRect)
 
     if gameState == GameState.LEVEL:
         contract_name = currentContract["name"] if currentContract else "Contract"
