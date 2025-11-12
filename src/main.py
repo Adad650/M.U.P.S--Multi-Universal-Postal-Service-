@@ -53,6 +53,70 @@ namePrefixes = ["Aurora", "Nova", "Echo", "Titan", "Quantum", "Lumen", "Vortex",
 nameSuffixes = ["Run", "Circuit", "Relay", "Shift", "Route", "Track", "Dash", "Spiral", "Passage", "Traverse", "Vector", "Expedition"]
 hazardDescriptors = ["charged dust lanes", "volatile thermal vents", "graviton storms", "magnetic shear pockets", "nebula acid rain", "rogue drone fields", "unstable warp echoes", "fractured bridgework"]
 difficultyScale = [(0.45, "Routine Route"), (0.7, "Risky Run"), (0.95, "Hazard Sweep"), (1.2, "Critical Gauntlet"), (10.0, "Impossible Route")]
+CONTRACT_TIER_ORDER = ["easy", "medium", "hard"]
+CONTRACT_ARCHETYPES = [
+    {
+        "key": "courier_cruise",
+        "tier": "easy",
+        "tagline": "Courier Cruise",
+        "summary": "Training loop with generous landing pads.",
+        "difficulty_range": (0.35, 0.5),
+        "gap_mul": (0.75, 0.9),
+        "width_mul": (1.2, 1.35),
+        "life_bonus": 1,
+        "gravity_offset": -0.02,
+        "traits": ["+1 support drone", "Wide landing pads"],
+    },
+    {
+        "key": "express_dash",
+        "tier": "medium",
+        "tagline": "Express Relay",
+        "summary": "Rush contracts with long sprints and bonus pay.",
+        "difficulty_range": (0.55, 0.85),
+        "gap_mul": (1.05, 1.2),
+        "width_mul": (0.9, 1.0),
+        "horizontal_bias": 1.25,
+        "payout_bonus": 0.15,
+        "traits": ["+15% payout", "Long sprint sections"],
+    },
+    {
+        "key": "precision_shift",
+        "tier": "medium",
+        "tagline": "Precision Shift",
+        "summary": "Compact pads that reward careful jumps.",
+        "difficulty_range": (0.65, 0.95),
+        "gap_mul": (1.0, 1.15),
+        "width_mul": (0.75, 0.9),
+        "xp_bonus": 0.15,
+        "traits": ["Compact pads", "+15% XP bounty"],
+    },
+    {
+        "key": "spireline_gauntlet",
+        "tier": "hard",
+        "tagline": "Spireline Contract",
+        "summary": "Vertical shafts carved between floating towers.",
+        "difficulty_range": (0.9, 1.2),
+        "gap_mul": (0.95, 1.05),
+        "width_mul": (0.8, 0.9),
+        "vertical_bias": 1.35,
+        "wall_jump": True,
+        "traits": ["Wall-jump thrusters online", "Vertical shaft routing"],
+    },
+    {
+        "key": "hazard_sweep",
+        "tier": "hard",
+        "tagline": "Hazard Sweep",
+        "summary": "Toxic fields with premium payout for precision.",
+        "difficulty_range": (1.0, 1.3),
+        "gap_mul": (1.2, 1.35),
+        "width_mul": (0.65, 0.8),
+        "gravity_offset": 0.04,
+        "life_bonus": -1,
+        "payout_bonus": 0.25,
+        "xp_bonus": 0.1,
+        "traits": ["Tiny pads", "+25% hazard pay", "-1 drone"],
+    },
+]
 
 gameState = GameState.HUB
 portalActive = False
@@ -112,6 +176,12 @@ levelSkyTop = 80
 levelBackgroundSurface = None
 levelGlowSurface = None
 backdropOrbs = []
+levelVerticalBias = 1.0
+levelHorizontalBias = 1.0
+wallJumpUnlocked = False
+wallContactDir = 0
+lastWallJumpMs = -10_000
+wallJumpCooldownMs = 220
 
 platformRects = []
 startPlatformRect = pygame.Rect(0, 0, 0, 0)
@@ -145,67 +215,150 @@ def create_vertical_gradient(width, height, top_color, bottom_color, top_alpha=2
     return surface.convert_alpha()
 
 
+def _clampf(value, low, high):
+    return max(low, min(high, value))
+
+
+def _sample_range(value, fallback):
+    if value is None:
+        return fallback
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return fallback
+        if len(value) == 1:
+            return value[0]
+        return random.uniform(value[0], value[1])
+    return value
+
+
+def pick_contract_profiles(count):
+    selected = []
+    used_keys = set()
+    for tier in CONTRACT_TIER_ORDER:
+        if len(selected) >= count:
+            break
+        options = [arch for arch in CONTRACT_ARCHETYPES if arch["tier"] == tier and arch["key"] not in used_keys]
+        if not options:
+            continue
+        choice = random.choice(options)
+        selected.append(choice)
+        used_keys.add(choice["key"])
+    remaining_needed = count - len(selected)
+    remaining_pool = [arch for arch in CONTRACT_ARCHETYPES if arch["key"] not in used_keys]
+    random.shuffle(remaining_pool)
+    while remaining_needed > 0 and remaining_pool:
+        choice = remaining_pool.pop()
+        selected.append(choice)
+        used_keys.add(choice["key"])
+        remaining_needed -= 1
+    while len(selected) < count:
+        selected.append(random.choice(CONTRACT_ARCHETYPES))
+    random.shuffle(selected)
+    return selected[:count]
+
+
+def build_contract_from_archetype(archetype):
+    diff_range = archetype.get("difficulty_range", (0.35, 1.05))
+    if isinstance(diff_range, (list, tuple)) and len(diff_range) == 2:
+        base_diff = random.uniform(diff_range[0], diff_range[1])
+    else:
+        base_diff = random.uniform(0.35, 1.05)
+    gravity_val = round(
+        _clampf(
+            0.45 + base_diff * 0.35 + random.uniform(-0.02, 0.02) + float(archetype.get("gravity_offset", 0.0)),
+            0.45,
+            0.9,
+        ),
+        3,
+    )
+    target_jump_height = random.uniform(220 - base_diff * 60, 320 - base_diff * 20)
+    target_jump_height = max(160, target_jump_height)
+    jump_strength = round((target_jump_height * 2 * gravity_val) ** 0.5, 3)
+    gap_min_val = int(round(60 + base_diff * 55 + random.uniform(-8, 8)))
+    gap_min_val = max(50, gap_min_val)
+    gap_spread = int(round(50 + base_diff * 80 + random.uniform(-12, 12)))
+    gap_max_val = gap_min_val + max(30, gap_spread)
+    gap_mul = float(_sample_range(archetype.get("gap_mul"), 1.0))
+    gap_min_val = int(round(gap_min_val * gap_mul))
+    gap_max_val = int(round(gap_max_val * gap_mul))
+    gap_min_val = max(40, gap_min_val)
+    gap_max_val = max(gap_min_val + 20, gap_max_val)
+    width_max_val = int(round(260 - base_diff * 110 + random.uniform(-12, 12)))
+    width_max_val = max(140, width_max_val)
+    width_min_val = width_max_val - int(round(40 + base_diff * 45))
+    width_min_val = max(80, width_min_val)
+    width_mul = float(_sample_range(archetype.get("width_mul"), 1.0))
+    width_min_val = int(round(width_min_val * width_mul))
+    width_max_val = int(round(width_max_val * width_mul))
+    if width_min_val >= width_max_val:
+        width_min_val = max(70, width_max_val - 20)
+    base_lives = max(2, 5 - int(base_diff * 3 + random.random()))
+    base_lives += int(archetype.get("life_bonus", 0))
+    base_lives = max(1, base_lives)
+    difficulty_score = base_diff
+    difficulty_score += max(0, (gap_min_val - 70) / 140)
+    difficulty_score += max(0, (200 - width_max_val) / 200)
+    difficulty_score += (5 - base_lives) * 0.08
+    difficulty_score = _clampf(difficulty_score, 0.35, 1.6)
+    payment = int(round(140 + difficulty_score * 340 + random.uniform(-10, 10)))
+    xp_reward = int(round(80 + difficulty_score * 240))
+    payout_bonus = float(archetype.get("payout_bonus", 0.0))
+    xp_bonus = float(archetype.get("xp_bonus", 0.0))
+    if payout_bonus:
+        payment = int(round(payment * (1.0 + payout_bonus)))
+    if xp_bonus:
+        xp_reward = int(round(xp_reward * (1.0 + xp_bonus)))
+    label = "Unknown Route"
+    for threshold, tag in difficultyScale:
+        if difficulty_score <= threshold:
+            label = tag
+            break
+    hazard_text = random.choice(hazardDescriptors)
+    tagline = archetype.get("tagline", label)
+    summary = archetype.get("summary", "")
+    if summary:
+        description = f"{tagline} — {summary} {label} through {hazard_text}."
+    else:
+        description = f"{tagline} — {label} through {hazard_text}."
+    traits = list(archetype.get("traits", ()))
+    contract = {
+        "name": f"{random.choice(namePrefixes)} {random.choice(nameSuffixes)}",
+        "description": description,
+        "payment": payment,
+        "xp": xp_reward,
+        "gravity": gravity_val,
+        "jump": jump_strength,
+        "gap_min": gap_min_val,
+        "gap_max": gap_max_val,
+        "width_min": width_min_val,
+        "width_max": width_max_val,
+        "lives": base_lives,
+        "difficulty": round(difficulty_score, 2),
+        "label": label,
+        "modifiers": traits,
+        "archetype": archetype.get("key", "unknown"),
+        "vertical_bias": float(_sample_range(archetype.get("vertical_bias"), 1.0)),
+        "horizontal_bias": float(_sample_range(archetype.get("horizontal_bias"), 1.0)),
+        "wall_jump": bool(archetype.get("wall_jump", False)),
+    }
+    return contract
+
+
 def returnToHub():
     global gameState, portalActive, levelNeedsBuild, gravity, jumpStrength, platformGapMin, platformGapMax, platformWidthMin, platformWidthMax
     global livesRemaining, maxLives, shopSelectionIndex, shopScrollOffset, shopMessage, spawnPoint, lastJumpPressMs, lastGroundedMs, velX, velY, onGround, cameraX, lastJumpHeight, currentContract, contracts, selectedContractIndex
+    global levelVerticalBias, levelHorizontalBias, wallJumpUnlocked, wallContactDir, lastWallJumpMs
     contracts.clear()
-    wow = 0
-    while wow < CONTRACT_OPTION_COUNT:
-        base_diff = random.uniform(0.35, 1.05)
-        gravity_val = round(min(max(0.45 + base_diff * 0.35 + random.uniform(-0.02, 0.02), 0.45), 0.85), 3)
-        target_jump_height = random.uniform(220 - base_diff * 60, 320 - base_diff * 20)
-        if target_jump_height < 160:
-            target_jump_height = 160
-        jump_strength = round((target_jump_height * 2 * gravity_val) ** 0.5, 3)
-        gap_min_val = int(round(60 + base_diff * 55 + random.uniform(-8, 8)))
-        if gap_min_val < 50:
-            gap_min_val = 50
-        gap_spread = int(round(50 + base_diff * 80 + random.uniform(-12, 12)))
-        gap_max_val = gap_min_val + max(30, gap_spread)
-        width_max_val = int(round(260 - base_diff * 110 + random.uniform(-12, 12)))
-        if width_max_val < 150:
-            width_max_val = 150
-        width_min_val = width_max_val - int(round(40 + base_diff * 45))
-        if width_min_val < 90:
-            width_min_val = 90
-        if width_min_val >= width_max_val:
-            width_min_val = max(80, width_max_val - 20)
-        base_lives = max(2, 5 - int(base_diff * 3 + random.random()))
-        difficulty_score = base_diff
-        difficulty_score += max(0, (gap_min_val - 70) / 140)
-        difficulty_score += max(0, (200 - width_max_val) / 200)
-        difficulty_score += (5 - base_lives) * 0.08
-        difficulty_score = max(0.35, min(difficulty_score, 1.4))
-        payment = int(round(140 + difficulty_score * 340 + random.uniform(-10, 10)))
-        xp_reward = int(round(80 + difficulty_score * 240))
-        label = "Unknown Route"
-        for threshold, tag in difficultyScale:
-            if difficulty_score <= threshold:
-                label = tag
-                break
-        contract_name = f"{random.choice(namePrefixes)} {random.choice(nameSuffixes)}"
-        description = f"{label} through {random.choice(hazardDescriptors)}."
-        contracts.append(
-            {
-                "name": contract_name,
-                "description": description,
-                "payment": payment,
-                "xp": xp_reward,
-                "gravity": gravity_val,
-                "jump": jump_strength,
-                "gap_min": gap_min_val,
-                "gap_max": gap_max_val,
-                "width_min": width_min_val,
-                "width_max": width_max_val,
-                "lives": base_lives,
-                "difficulty": round(difficulty_score, 2),
-                "label": label,
-            }
-        )
-        wow += 1
+    for archetype in pick_contract_profiles(CONTRACT_OPTION_COUNT):
+        contracts.append(build_contract_from_archetype(archetype))
     selectedContractIndex = 0
     if len(contracts) > 1 and random.random() > 0.4:
         random.shuffle(contracts)
+    levelVerticalBias = 1.0
+    levelHorizontalBias = 1.0
+    wallJumpUnlocked = False
+    wallContactDir = 0
+    lastWallJumpMs = -10_000
     spawnPoint.update(hubSpawnPoint.x, hubSpawnPoint.y)
     livesRemaining = 0
     maxLives = 0
@@ -287,6 +440,11 @@ while True:
                 platformWidthMax = currentContract["width_max"]
                 livesRemaining = max(1, currentContract["lives"] + extraLifeBonus)
                 maxLives = livesRemaining
+                levelVerticalBias = currentContract.get("vertical_bias", 1.0)
+                levelHorizontalBias = currentContract.get("horizontal_bias", 1.0)
+                wallJumpUnlocked = currentContract.get("wall_jump", False)
+                wallContactDir = 0
+                lastWallJumpMs = -10_000
                 portalActive = True
                 levelNeedsBuild = True
                 lastJumpHeight = (jumpStrength * jumpStrength) / (2.0 * max(1e-6, abs(gravity)))
@@ -426,8 +584,11 @@ while True:
                         "surface": orb_surface.convert_alpha(),
                     }
                 )
-            vertical_step = max(28, int(jumpHeight * 0.6))
-            horizontal_step = max(platformGapMin, min(platformGapMax, int(jumpHeight * 1.2)))
+            vertical_step = max(28, int(jumpHeight * 0.6 * levelVerticalBias))
+            horizontal_step = max(
+                platformGapMin,
+                min(platformGapMax, int(jumpHeight * 1.2 * levelHorizontalBias)),
+            )
             start_y = floorY - minFloorRoom - 40
             min_platform_y = max(100, levelSkyTop + minCeilRoom)
             max_platform_y = floorY - minFloorRoom
@@ -479,13 +640,32 @@ while True:
 
         solids = platformRects if gameState == GameState.LEVEL else []
         playerRect.x += int(velX)
-        if solids and velX != 0:
-            for solid in solids:
-                if playerRect.colliderect(solid):
-                    if velX > 0:
-                        playerRect.right = solid.left
-                    elif velX < 0:
-                        playerRect.left = solid.right
+        if solids:
+            collided_horizontally = False
+            if velX != 0:
+                for solid in solids:
+                    if playerRect.colliderect(solid):
+                        if velX > 0:
+                            playerRect.right = solid.left
+                            wallContactDir = 1
+                            collided_horizontally = True
+                        elif velX < 0:
+                            playerRect.left = solid.right
+                            wallContactDir = -1
+                            collided_horizontally = True
+            if not collided_horizontally:
+                contact_dir = 0
+                for solid in solids:
+                    if solid.top < playerRect.bottom and solid.bottom > playerRect.top:
+                        if playerRect.right == solid.left:
+                            contact_dir = 1
+                            break
+                        if playerRect.left == solid.right:
+                            contact_dir = -1
+                            break
+                wallContactDir = contact_dir
+        else:
+            wallContactDir = 0
 
         playerRect.y += int(velY)
         groundedNow = False
@@ -532,7 +712,33 @@ while True:
 
         pressedRecently = (now - lastJumpPressMs) <= jumpBufferMs
         hasCoyote = (now - lastGroundedMs) <= coyoteTimeMs
-        if (jumpPressedThisFrame or pressedRecently) and (onGround or hasCoyote):
+        wantsJump = jumpPressedThisFrame or pressedRecently
+        canWallJump = (
+            wantsJump
+            and wallJumpUnlocked
+            and wallContactDir != 0
+            and not onGround
+            and gameState == GameState.LEVEL
+            and (now - lastWallJumpMs) >= wallJumpCooldownMs
+        )
+        if canWallJump:
+            velY = -jumpStrength
+            lastWallJumpMs = now
+            onGround = False
+            lastJumpPressMs = -10_000
+            push = -wallContactDir * 6
+            if push != 0:
+                playerRect.x += push
+                if solids:
+                    for solid in solids:
+                        if playerRect.colliderect(solid):
+                            if push > 0:
+                                playerRect.right = solid.left
+                            else:
+                                playerRect.left = solid.right
+            wallContactDir = 0
+            lastGroundedMs = now - coyoteTimeMs - 5
+        elif wantsJump and (onGround or hasCoyote):
             velY = -jumpStrength
             onGround = False
             lastJumpPressMs = -10_000
@@ -663,9 +869,22 @@ while True:
             f"Lives: {livesRemaining}",
             f"Payment: ${payment}",
             f"Hazard: {floorHazardName}",
-            f"Jump Height: {int(lastJumpHeight)} px",
-            f"XP: {playerXP}/{xpForNextLevel} (Lv {playerLevel})",
         ]
+        if currentContract:
+            modifiers = currentContract.get("modifiers") or []
+            if modifiers:
+                summary = " · ".join(modifiers[:2])
+                if len(modifiers) > 2:
+                    summary += " · ..."
+                hud_lines.append(f"Mods: {summary}")
+            if currentContract.get("wall_jump"):
+                hud_lines.append("Ability: Wall jump thrusters online")
+        hud_lines.extend(
+            [
+                f"Jump Height: {int(lastJumpHeight)} px",
+                f"XP: {playerXP}/{xpForNextLevel} (Lv {playerLevel})",
+            ]
+        )
     elif gameState == GameState.HUB:
         hud_lines = [
             f"Level {playerLevel}    XP: {playerXP}/{xpForNextLevel}",
@@ -697,8 +916,10 @@ while True:
             nameColor = (255, 255, 255) if isSelected else (200, 200, 220)
             descColor = (190, 190, 210) if isSelected else (120, 120, 150)
             extraColor = (220, 220, 240) if isSelected else (130, 130, 150)
+            modifiers = contract.get("modifiers") or []
+            blockHeight = 60 + (18 if modifiers else 0)
             if isSelected:
-                highlight = pygame.Rect(panelRect.x + 15, itemY - 6, panelRect.width - 30, 48)
+                highlight = pygame.Rect(panelRect.x + 15, itemY - 6, panelRect.width - 30, blockHeight + 20)
                 pygame.draw.rect(screen, (70, 90, 140), highlight, border_radius=6)
             nameText = uiFont.render(f"{contract['name']} — ${effectivePay}", True, nameColor)
             screen.blit(nameText, (panelRect.x + 24, itemY))
@@ -710,7 +931,14 @@ while True:
                 extraColor,
             )
             screen.blit(extraText, (panelRect.x + 24, itemY + 42))
-            itemY += 70
+            if modifiers:
+                modsColor = (205, 235, 255) if isSelected else (145, 160, 190)
+                modsText = smallFont.render(" · ".join(modifiers), True, modsColor)
+                screen.blit(modsText, (panelRect.x + 24, itemY + 62))
+                itemY += 78
+            else:
+                itemY += 66
+            itemY += 10
         instructions = uiFont.render("Enter/E to accept • Esc to cancel • W/S to navigate", True, (230, 230, 240))
         screen.blit(instructions, (panelRect.x + 20, panelRect.bottom - 40))
 
