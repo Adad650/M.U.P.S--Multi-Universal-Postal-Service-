@@ -4,3 +4,4 @@ ignore/test.py
 .gitignore
 .DS_Store
 .DS_Store
+src/__pycache__/main.cpython-313.pyc

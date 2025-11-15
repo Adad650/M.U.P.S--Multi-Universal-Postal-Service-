@@ -1,3 +1,6 @@
+import io
+import urllib.request
+
 import os
 import pygame, sys, random
 from enum import Enum, auto
@@ -12,22 +15,22 @@ titleFont = pygame.font.Font(None, 48)
 smallFont = pygame.font.Font(None, 22)
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-PLAYER_SPRITE_SHEET_PATH = os.path.join(
-    BASE_DIR, "assets", "walking", "postman_walk_pixel_sheet.png"
+PLAYER_SPRITE_CDN = (
+    "https://hc-cdn.hel1.your-objectstorage.com/s/v3/"
+    "7c71df3b1e06cbc3381153d807734c44a07b9a91_postman_walk_pixel_sheet.png"
 )
 PLAYER_SPRITE_FRAME_COUNT = 16
-PLAYER_SPRITE_SCALE = 0.45
+PLAYER_SPRITE_SCALE = 0.7
 PLAYER_ANIM_FRAME_TIME = 90
+PLAYER_SPRINT_MULTIPLIER = 1.7
 
 
-def load_player_walk_frames(sheet_path):
-    sheet = pygame.image.load(sheet_path).convert_alpha()
+def _slice_frames(sheet):
     frame_width = sheet.get_width() // PLAYER_SPRITE_FRAME_COUNT
     frame_height = sheet.get_height()
     draw_width = max(1, int(round(frame_width * PLAYER_SPRITE_SCALE)))
     draw_height = max(1, int(round(frame_height * PLAYER_SPRITE_SCALE)))
     scale_x = draw_width / frame_width
-    scale_y = draw_height / frame_height
     frames = []
     offsets = []
     for frame_index in range(PLAYER_SPRITE_FRAME_COUNT):
@@ -48,15 +51,33 @@ def load_player_walk_frames(sheet_path):
     return frames, offsets
 
 
-try:
-    player_walk_frames_right, player_walk_offsets_right = load_player_walk_frames(
-        PLAYER_SPRITE_SHEET_PATH
-    )
-except Exception as exc:  # pragma: no cover - best effort graphics load
-    print("Unable to load walk animation:", exc)
-    player_walk_frames_right = []
-    player_walk_offsets_right = []
+def _load_sheet_from_url(url):
+    try:
+        with urllib.request.urlopen(url, timeout=6) as response:
+            data = response.read()
+        return pygame.image.load(io.BytesIO(data)).convert_alpha()
+    except Exception:
+        return None
 
+
+def _load_sheet_from_local():
+    path = os.path.join(BASE_DIR, "assets", "walking", "postman_walk_pixel_sheet.png")
+    try:
+        return pygame.image.load(path).convert_alpha()
+    except Exception:
+        return None
+
+
+def load_player_walk_frames():
+    sheet = _load_sheet_from_url(PLAYER_SPRITE_CDN)
+    if sheet is None:
+        sheet = _load_sheet_from_local()
+    if sheet is None:
+        return [], []
+    return _slice_frames(sheet)
+
+
+player_walk_frames_right, player_walk_offsets_right = load_player_walk_frames()
 player_walk_frames_left = [
     pygame.transform.flip(frame, True, False) for frame in player_walk_frames_right
 ]
@@ -688,9 +709,16 @@ while True:
             pygame.display.set_caption(f"M.U.P.S — Dimension {dimensionIndex + 1}")
             levelNeedsBuild = False
 
+        sprint_active = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+        move_speed = playerSpeed * (PLAYER_SPRINT_MULTIPLIER if sprint_active else 1)
         left = keys[pygame.K_a]
         right = keys[pygame.K_d]
-        velX = -playerSpeed if left and not right else playerSpeed if right and not left else 0
+        if left and not right:
+            velX = -move_speed
+        elif right and not left:
+            velX = move_speed
+        else:
+            velX = 0
         velY += gravity
 
         solids = platformRects if gameState == GameState.LEVEL else []
