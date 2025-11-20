@@ -46,6 +46,8 @@
       LEVEL: "Level",
       WIN: "Win",
       GAME_OVER: "GameOver",
+      NPC_DIALOG: "NpcDialog",
+      CODEX: "Codex",
     };
 
     const floorY = 520;
@@ -71,6 +73,67 @@
       width: shopCounterRect.width + 80,
       height: shopCounterRect.height + 140,
     };
+
+    const npcCharacters = [
+      {
+        key: "dispatcher_rae",
+        name: "Dispatcher Rae",
+        rect: { x: deskRect.right + 60, y: floorY - 92, width: 42, height: 80 },
+        color: "#ffd088",
+        accent: "#5098ff",
+        talkRect: null,
+        lines: [
+          "Routes keep shifting; I keep the gate tuned to your sprint.",
+          "Tap the console whenever you're ready for fresh contracts.",
+        ],
+        dynamicLines: () => {
+          const { current, next } = getPostalRank(contractsCompleted);
+          const lines = [
+            `Rank: ${current.title} — streak ${deliveryStreak}.`,
+          ];
+          if (next) {
+            lines.push(`${next.deliveries - contractsCompleted} deliveries away from ${next.title}.`);
+          }
+          lines.push(portalActive ? "Portal's charged—step through when ready." : "Bring me a contract and I'll prime the gate.");
+          return lines;
+        },
+      },
+      {
+        key: "archivist_zell",
+        name: "Archivist Zell",
+        rect: { x: portalRect.x - 110, y: floorY - 90, width: 36, height: 78 },
+        color: "#cfc3ff",
+        accent: "#835bdc",
+        talkRect: null,
+        lines: [
+          "I chart the storms you hop across—bring back good data.",
+          "Talk to me for lore on the next dimension.",
+        ],
+        dynamicLines: () => {
+          const lines = [];
+          if (currentContract) {
+            lines.push(`Manifest ready: ${currentContract.name} into ${currentContract.environment}.`);
+          } else {
+            lines.push("Console's waiting for you to pick a destination.");
+          }
+          if (dimensionLoreText) {
+            lines.push(dimensionLoreText);
+          } else {
+            lines.push("Each dimension paints its own sky—log the shades for me.");
+          }
+          lines.push(`Deliveries logged: ${contractsCompleted} (best streak ${bestDeliveryStreak}).`);
+          return lines;
+        },
+      },
+    ];
+    npcCharacters.forEach((npc) => {
+      npc.talkRect = {
+        x: npc.rect.x - 50,
+        y: npc.rect.y - 30,
+        width: npc.rect.width + 100,
+        height: npc.rect.height + 50,
+      };
+    });
 
     const namePrefixes = [
       "Aurora",
@@ -116,6 +179,136 @@
       [0.95, "Hazard Sweep"],
       [1.2, "Critical Gauntlet"],
       [10.0, "Impossible Route"],
+    ];
+
+    const DIMENSION_THEMES = [
+      {
+        key: "aurora_shelf",
+        name: "Aurora Shelf",
+        description: "Frozen freighters channel aurora currents between jumps.",
+        skyTop: [110, 190, 255],
+        skyBottom: [16, 36, 92],
+        ceilingColor: [70, 120, 200],
+        platformColor: [225, 240, 255],
+        hazardName: "Ion Tide",
+        hazardColor: [80, 190, 255],
+        glowColor: [150, 220, 255],
+        orbPalette: [
+          [255, 255, 220],
+          [160, 220, 255],
+          [255, 196, 220],
+        ],
+        orbCount: 28,
+      },
+      {
+        key: "ember_wastes",
+        name: "Ember Wastes",
+        description: "Charred mesas belch ember fire beneath courier routes.",
+        skyTop: [255, 170, 90],
+        skyBottom: [60, 24, 18],
+        ceilingColor: [150, 80, 50],
+        platformColor: [240, 200, 150],
+        hazardName: "Volcanic Slurry",
+        hazardColor: [220, 70, 32],
+        glowColor: [255, 120, 70],
+        orbPalette: [
+          [255, 200, 90],
+          [220, 120, 80],
+          [255, 255, 180],
+        ],
+        orbCount: 20,
+      },
+      {
+        key: "mist_cascades",
+        name: "Mist Cascades",
+        description: "Waterfalls drift upside down among mossy pylons.",
+        skyTop: [120, 220, 200],
+        skyBottom: [28, 70, 60],
+        ceilingColor: [60, 150, 120],
+        platformColor: [220, 255, 220],
+        hazardName: "Mycelium Bloom",
+        hazardColor: [120, 220, 150],
+        glowColor: [90, 200, 160],
+        orbPalette: [
+          [180, 255, 210],
+          [90, 210, 140],
+          [210, 255, 230],
+        ],
+        orbCount: 24,
+      },
+      {
+        key: "obsidian_verge",
+        name: "Obsidian Verge",
+        description: "Blackstone towers scrape storms of magnetized glass.",
+        skyTop: [80, 50, 110],
+        skyBottom: [12, 8, 20],
+        ceilingColor: [55, 40, 90],
+        platformColor: [200, 180, 255],
+        hazardName: "Shard Mist",
+        hazardColor: [150, 90, 200],
+        glowColor: [200, 120, 255],
+        orbPalette: [
+          [220, 180, 255],
+          [140, 120, 200],
+          [255, 130, 190],
+        ],
+        orbCount: 32,
+      },
+      {
+        key: "sunken_grotto",
+        name: "Sunken Grotto",
+        description: "Coral ruins hide crosstide delivery gates.",
+        skyTop: [70, 150, 200],
+        skyBottom: [10, 40, 70],
+        ceilingColor: [40, 90, 140],
+        platformColor: [210, 240, 230],
+        hazardName: "Brine Surge",
+        hazardColor: [40, 150, 200],
+        glowColor: [100, 200, 220],
+        orbPalette: [
+          [160, 220, 255],
+          [120, 200, 180],
+          [255, 240, 220],
+        ],
+        orbCount: 22,
+      },
+      {
+        key: "prism_belt",
+        name: "Prism Belt",
+        description: "Refraction fields split every shadow.",
+        skyTop: [255, 220, 180],
+        skyBottom: [40, 30, 50],
+        ceilingColor: [120, 80, 160],
+        platformColor: [255, 255, 255],
+        hazardName: "Spectral Flux",
+        hazardColor: [180, 80, 255],
+        glowColor: [255, 180, 230],
+        orbPalette: [
+          [255, 200, 230],
+          [200, 220, 255],
+          [255, 250, 180],
+        ],
+        orbCount: 36,
+      },
+    ];
+
+    const POSTAL_RANKS = [
+      { deliveries: 0, title: "Probation Courier" },
+      { deliveries: 3, title: "Horizon Runner" },
+      { deliveries: 7, title: "Nebula Specialist" },
+      { deliveries: 12, title: "Fracture Lead" },
+      { deliveries: 18, title: "Constellation Marshal" },
+      { deliveries: 25, title: "Mythic Dispatcher" },
+    ];
+
+    const PROGRESSION_MILESTONES = [
+      { deliveries: 1, type: "message", text: "First official route logged." },
+      { deliveries: 3, type: "pay_bonus", value: 0.05, text: "Hazard stipend +5%." },
+      { deliveries: 5, type: "life_bonus", value: 1, text: "Auxiliary drone adds +1 life." },
+      { deliveries: 8, type: "cash", value: 150, text: "Dispatch bonus wired: $150." },
+      { deliveries: 12, type: "pay_bonus", value: 0.08, text: "Elite stipend +8%." },
+      { deliveries: 15, type: "color_unlock", value: [255, 196, 120], text: "Solar Courier tint unlocked." },
+      { deliveries: 20, type: "life_bonus", value: 1, text: "Emergency drone adds +1 life." },
     ];
 
     const CONTRACT_ARCHETYPES = [
@@ -246,18 +439,40 @@
     let selectedContractIndex = 0;
     let shopSelectionIndex = 0;
     let shopScrollOffset = 0;
+    const dimensionCodex = {};
+    let codexSelectionIndex = 0;
+    let codexScrollOffset = 0;
+    const codexVisibleRows = 5;
+    const codexMessage = "Scan new dimensions to unlock entries.";
     let playerLevel = 1;
     let playerXP = 0;
     let xpForNextLevel = 120;
     let playerMoney = 0;
+    let contractsCompleted = 0;
+    let deliveryStreak = 0;
+    let bestDeliveryStreak = 0;
     let livesRemaining = 0;
     let missionPayMultiplier = 1.0;
+    let progressionPayBonusMultiplier = 1.0;
     let extraLifeBonus = 0;
+    let progressionLifeBonus = 0;
+    const unlockedMilestones = new Set();
     let playerColor = [255, 255, 255];
     let officeDecor = "standard";
     const ownedUpgrades = {};
     let shopMessage = "Welcome to the Supply Depot.";
     let portalActive = false;
+    let dimensionLoreText = "";
+    let dimensionTheme = null;
+    let floorHazardName = "ACID";
+    let levelPlatformColor = "#c8cff0";
+    let levelDoorColor = "#4d4ff5";
+    let levelSkyTopColor = [38, 42, 68];
+    let levelSkyBottomColor = [5, 7, 18];
+    let levelGlowColor = [100, 200, 220];
+    let levelBeacons = [];
+    let beaconsCollected = 0;
+    let levelStartMs = 0;
 
     let currentContract = null;
     let levelPlatforms = [];
@@ -275,10 +490,38 @@
     const keysDown = new Set();
     let lastTimestamp = 0;
 
-    const winSummary = { payment: 0, xp: 0, contract: "", moneyTotal: 0, level: 1 };
-    const gameOverSummary = { contract: "", reason: "Out of lives" };
+    const winSummary = {
+      payment: 0,
+      xp: 0,
+      contract: "",
+      moneyTotal: 0,
+      level: 1,
+      environment: "",
+      hazard: "",
+      deliveries: 0,
+      streak: 0,
+      rank: "Probation Courier",
+      nextRank: null,
+      nextRankDelta: 0,
+      milestones: [],
+      payBonus: 0,
+      beacons: 0,
+      beaconTotal: 0,
+      beaconCash: 0,
+      beaconXp: 0,
+      time: 0,
+    };
+    const gameOverSummary = {
+      contract: "",
+      reason: "Out of lives",
+      streakNote: "",
+      best: 0,
+    };
 
     let sliderTicker = 0;
+    let activeNpc = null;
+    let activeNpcLines = [];
+    let activeNpcIndex = 0;
 
     function loadPlayerSprite() {
       const src = playerSpriteSources[playerSpriteAttempt];
@@ -341,6 +584,202 @@
       ];
     }
 
+    function rgbToCss(color, alpha = 1) {
+      const [r, g, b] = color;
+      return alpha === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function pickDimensionTheme() {
+      return DIMENSION_THEMES[Math.floor(Math.random() * DIMENSION_THEMES.length)];
+    }
+
+    function ensureCodexEntry(theme) {
+      if (!theme) return null;
+      const key = theme.key;
+      if (!dimensionCodex[key]) {
+        dimensionCodex[key] = {
+          key,
+          name: theme.name,
+          description: theme.description,
+          hazard: theme.hazardName || "Hazard",
+          timesSeen: 0,
+          completions: 0,
+          failures: 0,
+          bestTime: null,
+          bestBeacons: 0,
+        };
+      }
+      return dimensionCodex[key];
+    }
+
+    function registerDimensionDiscovery(theme) {
+      const entry = ensureCodexEntry(theme);
+      if (!entry) return;
+      entry.timesSeen += 1;
+      if (entry.timesSeen === 1) {
+        pushProgressToast(`Logged new dimension: ${entry.name}`);
+      }
+    }
+
+    function recordCodexCompletion(themeKey, missionTime, beaconCount, success = true) {
+      if (!themeKey) return;
+      const entry = dimensionCodex[themeKey];
+      if (!entry) return;
+      if (success) {
+        entry.completions += 1;
+        if (missionTime && (!entry.bestTime || missionTime < entry.bestTime)) {
+          entry.bestTime = missionTime;
+        }
+        if (beaconCount) {
+          entry.bestBeacons = Math.max(entry.bestBeacons, beaconCount);
+        }
+      } else {
+        entry.failures += 1;
+      }
+    }
+
+    function formatTime(ms) {
+      if (!ms) return "--";
+      const seconds = ms / 1000;
+      const minutes = Math.floor(seconds / 60);
+      const remainder = (seconds - minutes * 60).toFixed(1).padStart(4, "0");
+      return `${String(minutes).padStart(2, "0")}:${remainder}s`;
+    }
+
+    function getCodexEntries() {
+      return Object.values(dimensionCodex).sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function wrapText(text, maxWidth, font = "16px 'Segoe UI', system-ui") {
+      if (!text) return [];
+      ctx.save();
+      ctx.font = font;
+      const words = text.split(/\s+/g);
+      const lines = [];
+      let current = "";
+      for (const word of words) {
+        const candidate = current ? `${current} ${word}` : word;
+        if (ctx.measureText(candidate).width <= maxWidth) {
+          current = candidate;
+        } else {
+          if (current) lines.push(current);
+          current = word;
+        }
+      }
+      if (current) lines.push(current);
+      ctx.restore();
+      return lines;
+    }
+
+    const PROGRESS_TOAST_DURATION = 5200;
+    const progressToasts = [];
+
+    function pushProgressToast(text) {
+      progressToasts.push({ text, expires: performance.now() + PROGRESS_TOAST_DURATION });
+    }
+
+    function buildNpcDialogue(npc) {
+      const lines = [...(npc.lines || [])];
+      if (typeof npc.dynamicLines === "function") {
+        lines.push(...npc.dynamicLines());
+      }
+      return lines;
+    }
+
+    function openNpcDialog(npc) {
+      activeNpc = npc;
+      activeNpcLines = buildNpcDialogue(npc);
+      activeNpcIndex = 0;
+      gameState = GameState.NPC_DIALOG;
+    }
+
+    function advanceNpcDialog() {
+      if (!activeNpcLines.length) {
+        closeNpcDialog();
+        return;
+      }
+      activeNpcIndex += 1;
+      if (activeNpcIndex >= activeNpcLines.length) {
+        closeNpcDialog();
+      }
+    }
+
+    function closeNpcDialog() {
+      activeNpc = null;
+      activeNpcLines = [];
+      activeNpcIndex = 0;
+      gameState = GameState.HUB;
+    }
+
+    function getPostalRank(deliveries) {
+      let current = POSTAL_RANKS[0];
+      let next = null;
+      for (const rank of POSTAL_RANKS) {
+        if (deliveries >= rank.deliveries) {
+          current = rank;
+        } else {
+          next = rank;
+          break;
+        }
+      }
+      return { current, next };
+    }
+
+    function applyProgressMilestones() {
+      const unlocked = [];
+      for (const milestone of PROGRESSION_MILESTONES) {
+        if (contractsCompleted >= milestone.deliveries && !unlockedMilestones.has(milestone.deliveries)) {
+          unlockedMilestones.add(milestone.deliveries);
+          switch (milestone.type) {
+            case "pay_bonus":
+              progressionPayBonusMultiplier *= 1 + (milestone.value || 0);
+              break;
+            case "life_bonus":
+              progressionLifeBonus += milestone.value || 0;
+              break;
+            case "cash":
+              playerMoney += milestone.value || 0;
+              break;
+            case "color_unlock":
+              playerColor = milestone.value || playerColor;
+              break;
+            default:
+              break;
+          }
+          const text = milestone.text || "Milestone reached.";
+          unlocked.push(text);
+          pushProgressToast(text);
+        }
+      }
+      return unlocked;
+    }
+
+    function recordDeliverySuccess() {
+      contractsCompleted += 1;
+      deliveryStreak += 1;
+      if (deliveryStreak > bestDeliveryStreak) {
+        bestDeliveryStreak = deliveryStreak;
+      }
+      pushProgressToast(`Delivery ${contractsCompleted} complete! Streak ${deliveryStreak}.`);
+      const unlocked = applyProgressMilestones();
+      const { current, next } = getPostalRank(contractsCompleted);
+      return { unlocked, current, next };
+    }
+
+    function recordDeliveryFailure() {
+      let note = "";
+      if (deliveryStreak > 0) {
+        note = `Streak reset at ${deliveryStreak}.`;
+        pushProgressToast(note);
+      }
+      deliveryStreak = 0;
+      return note;
+    }
+
+    function getEffectivePayMultiplier() {
+      return missionPayMultiplier * progressionPayBonusMultiplier;
+    }
+
     function pickContractProfiles(count) {
       const selected = [];
       const used = new Set();
@@ -397,7 +836,9 @@
       }
       const hazardText = hazardDescriptors[Math.floor(Math.random() * hazardDescriptors.length)];
       const modifiers = archetype.traits ? [...archetype.traits] : [];
-      const description = `${archetype.tagline} — ${archetype.summary || label} through ${hazardText}.`;
+      const theme = pickDimensionTheme();
+      const themeContext = theme.description || `Look for signals in ${theme.name}.`;
+      const description = `${archetype.tagline} — ${themeContext} Expect ${hazardText}.`;
       const name = `${namePrefixes[Math.floor(Math.random() * namePrefixes.length)]} ${nameSuffixes[Math.floor(Math.random() * nameSuffixes.length)]}`;
       return {
         key: archetype.key,
@@ -413,6 +854,11 @@
         wallJump: Boolean(archetype.wallJump),
         gapRange: [gapMin, gapMax],
         widthRange: [Math.max(70, widthMin), Math.max(90, widthMax)],
+        environment: theme.name,
+        theme,
+        themeKey: theme.key,
+        hazardLabel: theme.hazardName || hazardText,
+        themeContext,
       };
     }
 
@@ -429,7 +875,27 @@
       return a.x + a.width > b.x && a.x < b.x + b.width && a.y + a.height > b.y && a.y < b.y + b.height;
     }
 
+    function applyThemeToLevel(theme) {
+      dimensionTheme = theme || null;
+      if (theme) {
+        levelSkyTopColor = theme.skyTop || [38, 42, 68];
+        levelSkyBottomColor = theme.skyBottom || [5, 7, 18];
+        levelGlowColor = theme.glowColor || [100, 200, 220];
+        levelPlatformColor = rgbToCss(theme.platformColor || [200, 210, 235]);
+        floorHazardName = theme.hazardName || "Hazard";
+        levelDoorColor = rgbToCss(theme.ceilingColor || [120, 160, 255]);
+      } else {
+        levelSkyTopColor = [38, 42, 68];
+        levelSkyBottomColor = [5, 7, 18];
+        levelGlowColor = [100, 200, 220];
+        levelPlatformColor = "#c8cff0";
+        floorHazardName = "ACID";
+        levelDoorColor = "#4d4ff5";
+      }
+    }
+
     function createLevel(contract) {
+      applyThemeToLevel(contract.theme);
       const platforms = [];
       const baseY = floorY - 130;
       let x = 0;
@@ -462,66 +928,118 @@
         width: levelDoorWidth,
         height: levelDoorHeight,
       };
+      levelBeacons = [];
+      beaconsCollected = 0;
+      const beaconPlatforms = levelPlatforms.slice(1, -1);
+      for (let i = 0; i < Math.min(beaconPlatforms.length, Math.floor(Math.random() * 3) + 2); i++) {
+        const plat = beaconPlatforms[i];
+        const spawnX = plat.x + 20 + Math.random() * Math.max(20, plat.width - 40);
+        const spawnY = plat.y - 18;
+        levelBeacons.push({
+          x: spawnX,
+          y: spawnY,
+          pulse: Math.random() * Math.PI * 2,
+          collected: false,
+        });
+      }
       buildLevelBackdrop();
       levelNeedsBuild = false;
+      levelStartMs = performance.now();
     }
 
     function buildLevelBackdrop() {
-      const orbCount = 26;
+      const theme = dimensionTheme;
+      const orbCount = theme && theme.orbCount ? theme.orbCount : 26;
       const maxX = Math.max(levelLength, screenWidth * 1.1);
       levelBackdropOrbs = [];
       for (let i = 0; i < orbCount; i++) {
         const radius = Math.random() * 12 + 6;
         const y = Math.random() * (floorY - 100) + 40;
-        const teal = 160 + Math.floor(Math.random() * 80);
-        const lavender = 190 + Math.floor(Math.random() * 60);
+        let baseColor = [160 + Math.floor(Math.random() * 80), 190 + Math.floor(Math.random() * 60), 255];
+        if (theme && theme.orbPalette && theme.orbPalette.length) {
+          baseColor = theme.orbPalette[Math.floor(Math.random() * theme.orbPalette.length)];
+        }
+        const tint = mixColors(baseColor, levelGlowColor, Math.random() * 0.6);
         levelBackdropOrbs.push({
           x: Math.random() * (maxX + 200),
           y,
           radius,
           parallax: Math.random() * 0.3 + 0.15,
-          color: `rgba(${lavender}, ${teal}, 255, ${0.2 + Math.random() * 0.35})`,
+          color: `rgba(${tint[0]}, ${tint[1]}, ${tint[2]}, ${0.2 + Math.random() * 0.35})`,
         });
       }
     }
 
     function queueContract(contract) {
       currentContract = contract;
-      livesRemaining = contract.lives + extraLifeBonus;
+      registerDimensionDiscovery(contract.theme);
+      dimensionLoreText = contract.themeContext || "";
+      livesRemaining = contract.lives + extraLifeBonus + progressionLifeBonus;
       missionPayMultiplier = Math.max(1, missionPayMultiplier);
       levelNeedsBuild = true;
       levelDoorRect = { x: 0, y: 0, width: 0, height: 0 };
       levelBackdropOrbs = [];
       portalActive = true;
-      shopMessage = `Contract queued: ${contract.name}. Walk into the portal to begin.`;
+      floorHazardName = contract.hazardLabel || contract.hazard;
+      shopMessage = `Contract queued: ${contract.name} to ${contract.environment}. Portal awaiting.`;
       gameState = GameState.HUB;
     }
 
     function completeContract() {
-      const payout = Math.round(currentContract.payment * missionPayMultiplier);
-      playerMoney += payout;
-      addXP(currentContract.xp);
-      winSummary.payment = payout;
-      winSummary.xp = currentContract.xp;
+      const payout = Math.round(currentContract.payment * getEffectivePayMultiplier());
+      const beaconCashBonus = beaconsCollected * 30;
+      const beaconXpBonus = beaconsCollected * 15;
+      playerMoney += payout + beaconCashBonus;
+      addXP(currentContract.xp + beaconXpBonus);
+      const { unlocked, current, next } = recordDeliverySuccess();
+      const nextDelta = next ? Math.max(0, next.deliveries - contractsCompleted) : 0;
+      const payBonus = Math.round((progressionPayBonusMultiplier - 1) * 100);
+      const missionTime = levelStartMs ? performance.now() - levelStartMs : 0;
+      recordCodexCompletion(currentContract.themeKey, missionTime, beaconsCollected, true);
+      winSummary.payment = payout + beaconCashBonus;
+      winSummary.xp = currentContract.xp + beaconXpBonus;
       winSummary.contract = currentContract.name;
       winSummary.moneyTotal = playerMoney;
       winSummary.level = playerLevel;
+      winSummary.environment = currentContract.environment || "";
+      winSummary.hazard = currentContract.hazardLabel || floorHazardName;
+      winSummary.deliveries = contractsCompleted;
+      winSummary.streak = deliveryStreak;
+      winSummary.rank = current.title;
+      winSummary.nextRank = next ? next.title : null;
+      winSummary.nextRankDelta = nextDelta;
+      winSummary.milestones = unlocked;
+      winSummary.payBonus = payBonus;
+      winSummary.beacons = beaconsCollected;
+      winSummary.beaconTotal = levelBeacons.length;
+      winSummary.beaconCash = beaconCashBonus;
+      winSummary.beaconXp = beaconXpBonus;
+      winSummary.time = missionTime;
       portalActive = false;
       levelDoorRect = { x: 0, y: 0, width: 0, height: 0 };
       levelPlatforms = [];
       levelLength = 0;
       levelBackdropOrbs = [];
+      levelBeacons = [];
       gameState = GameState.WIN;
     }
 
     function failContract(reason) {
+      const streakNote = recordDeliveryFailure();
+      if (currentContract) {
+        recordCodexCompletion(currentContract.themeKey, 0, beaconsCollected, false);
+      }
       gameOverSummary.contract = currentContract ? currentContract.name : "Contract";
       gameOverSummary.reason = reason;
+      gameOverSummary.streakNote = streakNote;
+      gameOverSummary.best = bestDeliveryStreak;
       portalActive = false;
       levelDoorRect = { x: 0, y: 0, width: 0, height: 0 };
       levelPlatforms = [];
       levelLength = 0;
       levelBackdropOrbs = [];
+      levelBeacons = [];
+      dimensionLoreText = "";
       gameState = GameState.GAME_OVER;
     }
 
@@ -579,6 +1097,7 @@
       "KeyS",
       "KeyD",
       "KeyE",
+      "KeyC",
       "KeyR",
       "Enter",
       "NumpadEnter",
@@ -596,6 +1115,14 @@
     });
 
     function handleKey(code) {
+      if (gameState === GameState.NPC_DIALOG) {
+        if (code === "Enter" || code === "NumpadEnter" || code === "KeyE") {
+          advanceNpcDialog();
+        } else if (code === "Escape") {
+          closeNpcDialog();
+        }
+        return;
+      }
       if (gameState === GameState.CONTRACT_MENU) {
         if (code === "ArrowUp" || code === "KeyW") {
           selectedContractIndex = (selectedContractIndex - 1 + contracts.length) % contracts.length;
@@ -630,7 +1157,19 @@
         const playerRect = getPlayerRect();
         const nearComputer = rectsIntersect(playerRect, computerInteractRect);
         const nearShop = rectsIntersect(playerRect, shopInteractRect);
-        if (code === "KeyE" && nearComputer) {
+        const talkableNpc = npcCharacters.find((npc) => rectsIntersect(playerRect, npc.talkRect));
+        if (code === "KeyE" && talkableNpc) {
+          openNpcDialog(talkableNpc);
+        } else if (code === "KeyC" && nearComputer) {
+          const entries = getCodexEntries();
+          if (entries.length) {
+            codexSelectionIndex = Math.min(codexSelectionIndex, entries.length - 1);
+          } else {
+            codexSelectionIndex = 0;
+          }
+          codexScrollOffset = Math.max(0, Math.min(codexSelectionIndex, codexSelectionIndex - codexVisibleRows + 1));
+          gameState = GameState.CODEX;
+        } else if (code === "KeyE" && nearComputer) {
           refreshContracts();
           gameState = GameState.CONTRACT_MENU;
         } else if (code === "KeyR" && nearShop) {
@@ -639,10 +1178,27 @@
         return;
       }
 
+      if (gameState === GameState.CODEX) {
+        const entries = getCodexEntries();
+        if (entries.length) {
+          if (code === "ArrowUp" || code === "KeyW") {
+            codexSelectionIndex = (codexSelectionIndex - 1 + entries.length) % entries.length;
+          } else if (code === "ArrowDown" || code === "KeyS") {
+            codexSelectionIndex = (codexSelectionIndex + 1) % entries.length;
+          }
+          codexScrollOffset = Math.max(0, Math.min(codexSelectionIndex, codexSelectionIndex - codexVisibleRows + 1));
+        }
+        if (code === "Enter" || code === "NumpadEnter" || code === "KeyE" || code === "Escape") {
+          gameState = GameState.HUB;
+        }
+        return;
+      }
+
       if (gameState === GameState.WIN || gameState === GameState.GAME_OVER) {
         if (code === "Enter" || code === "NumpadEnter" || code === "KeyE") {
           gameState = GameState.HUB;
           currentContract = null;
+          dimensionLoreText = "";
         }
       }
     }
@@ -687,6 +1243,17 @@
             player.onGround = true;
           }
         }
+        levelBeacons.forEach((beacon) => {
+          if (!beacon.collected) {
+            const dx = player.x + player.width / 2 - beacon.x;
+            const dy = player.y + player.height / 2 - beacon.y;
+            if (Math.abs(dx) < 18 && Math.abs(dy) < 18) {
+              beacon.collected = true;
+              beaconsCollected += 1;
+              pushProgressToast(`Beacon ${beaconsCollected}/${levelBeacons.length} collected`);
+            }
+          }
+        });
         if (player.y > screenHeight) {
           livesRemaining -= 1;
           if (livesRemaining <= 0) {
@@ -728,6 +1295,12 @@
     function loop(timestamp) {
       const delta = timestamp - lastTimestamp;
       lastTimestamp = timestamp;
+      const toastNow = performance.now();
+      for (let i = progressToasts.length - 1; i >= 0; i -= 1) {
+        if (progressToasts[i].expires <= toastNow) {
+          progressToasts.splice(i, 1);
+        }
+      }
       if (gameState === GameState.LEVEL && levelNeedsBuild && currentContract) {
         createLevel(currentContract);
       }
@@ -748,6 +1321,7 @@
       } else {
         playerWalkTimer = 0;
         playerAnimIndex = 0;
+        playerMoving = false;
       }
       draw();
       requestAnimationFrame(loop);
@@ -757,22 +1331,32 @@
       ctx.fillStyle = "#030512";
       ctx.fillRect(0, 0, screenWidth, screenHeight);
       const gradient = ctx.createLinearGradient(0, 0, 0, screenHeight);
-      gradient.addColorStop(0, "rgba(38, 42, 68, 0.88)");
-      gradient.addColorStop(0.6, "rgba(5, 7, 18, 0.95)");
-      gradient.addColorStop(1, "rgba(2, 3, 8, 0.98)");
+      if (gameState === GameState.LEVEL) {
+        gradient.addColorStop(0, rgbToCss(levelSkyTopColor, 0.95));
+        gradient.addColorStop(1, rgbToCss(levelSkyBottomColor, 0.98));
+      } else {
+        gradient.addColorStop(0, "rgba(38, 42, 68, 0.88)");
+        gradient.addColorStop(0.6, "rgba(5, 7, 18, 0.95)");
+        gradient.addColorStop(1, "rgba(2, 3, 8, 0.98)");
+      }
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, screenWidth, screenHeight);
-      ctx.save();
-      ctx.globalAlpha = 0.55;
-      const halo = ctx.createRadialGradient(screenWidth * 0.25, screenHeight * 0.25, 20, screenWidth * 0.25, screenHeight * 0.25, 280);
-      halo.addColorStop(0, "rgba(115, 180, 255, 0.4)");
-      halo.addColorStop(1, "rgba(5, 5, 20, 0)");
-      ctx.fillStyle = halo;
-      ctx.fillRect(0, 0, screenWidth, screenHeight);
-      ctx.restore();
       if (gameState === GameState.LEVEL) {
+        const glow = ctx.createLinearGradient(0, floorY - 120, 0, screenHeight);
+        glow.addColorStop(0, rgbToCss(levelGlowColor, 0.0));
+        glow.addColorStop(1, rgbToCss(levelGlowColor, 0.45));
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, floorY - 160, screenWidth, screenHeight - (floorY - 160));
         drawLevelBackdropGrid();
       } else {
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        const halo = ctx.createRadialGradient(screenWidth * 0.25, screenHeight * 0.25, 20, screenWidth * 0.25, screenHeight * 0.25, 280);
+        halo.addColorStop(0, "rgba(115, 180, 255, 0.4)");
+        halo.addColorStop(1, "rgba(5, 5, 20, 0)");
+        ctx.fillStyle = halo;
+        ctx.fillRect(0, 0, screenWidth, screenHeight);
+        ctx.restore();
         drawHubAtmosphere();
       }
     }
@@ -830,12 +1414,27 @@
         }
       }
       for (const platform of levelPlatforms) {
-        ctx.fillStyle = platform.isEnd ? "#7a9bff" : "#c8cff0";
+        ctx.fillStyle = platform.isEnd ? rgbToCss(mixColors(levelGlowColor, [255, 255, 255], 0.25)) : levelPlatformColor;
         ctx.fillRect(platform.x - cameraX(), platform.y, platform.width, platform.height);
       }
+      levelBeacons.forEach((beacon) => {
+        if (beacon.collected) return;
+        const bob = Math.sin(sliderTicker * 0.005 + beacon.pulse) * 3;
+        const drawX = beacon.x - cameraX();
+        const drawY = beacon.y + bob;
+        ctx.fillStyle = "#ffe6a0";
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#5fcfff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, 12, 0, Math.PI * 2);
+        ctx.stroke();
+      });
       if (levelDoorRect.width) {
         const doorX = levelDoorRect.x - cameraX();
-        ctx.fillStyle = "#4d4ff5";
+        ctx.fillStyle = levelDoorColor;
         ctx.fillRect(doorX, levelDoorRect.y, levelDoorRect.width, levelDoorRect.height);
         ctx.strokeStyle = "#bfdbff";
         ctx.lineWidth = 3;
@@ -847,7 +1446,9 @@
       }
       ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
       ctx.font = "18px 'Segoe UI', system-ui";
-      ctx.fillText(`Hazard: ${currentContract.hazard}`, 20, 60);
+      const hazardLabel = currentContract ? currentContract.hazardLabel || currentContract.hazard : floorHazardName;
+      const envLabel = currentContract ? currentContract.environment : "Unknown";
+      ctx.fillText(`Dimension: ${envLabel} · Hazard: ${hazardLabel}`, 20, 60);
     }
 
     function cameraX() {
@@ -888,8 +1489,8 @@
     function drawHUD() {
       const hudX = 14;
       const hudY = 16;
-      const hudW = 228;
-      const hudH = 104;
+      const hudW = 260;
+      const hudH = 200;
       ctx.save();
       ctx.shadowColor = "rgba(4, 10, 30, 0.8)";
       ctx.shadowBlur = 18;
@@ -904,16 +1505,86 @@
       ctx.fillText(`Level ${playerLevel}  XP: ${playerXP}/${xpForNextLevel}`, hudX + 12, hudY + 28);
       ctx.font = "16px 'Segoe UI', system-ui";
       ctx.fillText(`Money: $${playerMoney}`, hudX + 12, hudY + 52);
+      ctx.fillText(`Deliveries: ${contractsCompleted}  Streak: ${deliveryStreak}`, hudX + 12, hudY + 72);
+      const { current, next } = getPostalRank(contractsCompleted);
+      const rankLine = next ? `Rank: ${current.title} → ${next.deliveries - contractsCompleted}` : `Rank: ${current.title}`;
+      ctx.fillText(rankLine, hudX + 12, hudY + 92);
+      const bonusLives = extraLifeBonus + progressionLifeBonus;
+      ctx.fillText(`Pay x${getEffectivePayMultiplier().toFixed(2)}  Bonus lives: +${bonusLives}`, hudX + 12, hudY + 112);
       if (gameState === GameState.LEVEL && currentContract) {
         ctx.fillStyle = "rgba(255,255,255,0.7)";
-        ctx.fillText(`Payment: $${Math.round(currentContract.payment * missionPayMultiplier)}`, hudX + 12, hudY + 76);
-        ctx.fillText(`Lives: ${livesRemaining}`, hudX + 12, hudY + 96);
-      } else if (gameState === GameState.HUB) {
+        ctx.fillText(`Payment: $${Math.round(currentContract.payment * getEffectivePayMultiplier())}`, hudX + 12, hudY + 132);
+        ctx.fillText(`Lives: ${livesRemaining}`, hudX + 12, hudY + 152);
+        if (currentContract.environment) {
+          ctx.fillText(`Dim: ${currentContract.environment}`, hudX + 12, hudY + 172);
+        }
+        if (levelBeacons.length) {
+          ctx.fillText(`Beacons: ${beaconsCollected}/${levelBeacons.length}`, hudX + 12, hudY + 192);
+        }
+      } else if (gameState === GameState.HUB || gameState === GameState.NPC_DIALOG || gameState === GameState.CODEX) {
         ctx.fillStyle = portalActive ? "#7fffc7" : "#ff9f96";
-        ctx.fillText(`Portal: ${portalActive ? "ONLINE" : "offline"}`, hudX + 12, hudY + 76);
+        ctx.fillText(`Portal: ${portalActive ? "ONLINE" : "offline"}`, hudX + 12, hudY + 132);
         ctx.fillStyle = "rgba(255,255,255,0.65)";
-        ctx.fillText("Press E/R near stations", hudX + 12, hudY + 96);
+        ctx.fillText("Press E/R near stations", hudX + 12, hudY + 152);
+        ctx.fillText("Press C @ computer for codex", hudX + 12, hudY + 172);
+        ctx.fillText("Press E near crew to chat", hudX + 12, hudY + 192);
       }
+    }
+
+    function drawLoreCaption() {
+      if (gameState !== GameState.LEVEL || !dimensionLoreText) return;
+      ctx.save();
+      ctx.font = "14px 'Segoe UI', system-ui";
+      const lines = wrapText(dimensionLoreText, 360, "14px 'Segoe UI', system-ui");
+      ctx.fillStyle = "rgba(6, 8, 20, 0.75)";
+      const panelHeight = lines.length * 20 + 16;
+      ctx.fillRect(16, screenHeight - panelHeight - 16, 380, panelHeight);
+      ctx.strokeStyle = "rgba(200, 230, 255, 0.4)";
+      ctx.strokeRect(16, screenHeight - panelHeight - 16, 380, panelHeight);
+      ctx.fillStyle = "#dfeeff";
+      lines.slice(0, 3).forEach((line, i) => {
+        ctx.fillText(line, 24, screenHeight - panelHeight + 4 + i * 20);
+      });
+      ctx.restore();
+    }
+
+    function drawProgressToasts() {
+      if (!progressToasts.length) return;
+      ctx.font = "14px 'Segoe UI', system-ui";
+      progressToasts.slice(0, 3).forEach((toast, idx) => {
+        const width = ctx.measureText(toast.text).width + 24;
+        const x = screenWidth - width - 24;
+        const y = 24 + idx * 38;
+        ctx.fillStyle = "rgba(8,12,28,0.85)";
+        ctx.fillRect(x, y, width, 30);
+        ctx.strokeStyle = "rgba(120,180,255,0.6)";
+        ctx.strokeRect(x, y, width, 30);
+        ctx.fillStyle = "#fdf7d2";
+        ctx.fillText(toast.text, x + 12, y + 20);
+      });
+    }
+
+    function drawNpcDialog() {
+      if (!activeNpc) return;
+      const panelX = 100;
+      const panelY = screenHeight - 220;
+      const panelW = screenWidth - 200;
+      const panelH = 180;
+      ctx.fillStyle = "rgba(18, 20, 40, 0.9)";
+      ctx.fillRect(panelX, panelY, panelW, panelH);
+      ctx.strokeStyle = "rgba(160, 190, 255, 0.8)";
+      ctx.strokeRect(panelX, panelY, panelW, panelH);
+      ctx.font = "20px 'Segoe UI', system-ui";
+      ctx.fillStyle = "#e6ecff";
+      ctx.fillText(`${activeNpc.name} — ${activeNpcIndex + 1}/${activeNpcLines.length || 1}`, panelX + 24, panelY + 36);
+      ctx.font = "16px 'Segoe UI', system-ui";
+      const lines = wrapText(activeNpcLines[activeNpcIndex] || "...", panelW - 48, "16px 'Segoe UI', system-ui");
+      lines.slice(0, 4).forEach((line, idx) => {
+        ctx.fillText(line, panelX + 24, panelY + 70 + idx * 26);
+      });
+      ctx.font = "14px 'Segoe UI', system-ui";
+      ctx.fillStyle = "#a8b5ff";
+      ctx.fillText("Enter/E to continue · Esc to exit", panelX + 24, panelY + panelH - 20);
     }
 
     function drawPortalGlow(isActive) {
@@ -999,6 +1670,7 @@
       ctx.font = "14px 'Segoe UI', system-ui";
       ctx.fillStyle = "#c4d9ff";
       ctx.fillText("Press E @ computer for contracts", deskRect.x + 12, deskRect.y - 10);
+      ctx.fillText("Press C @ computer for codex", deskRect.x + 12, deskRect.y + 10);
       ctx.fillText("Press R @ counter for upgrades", shopCounterRect.x + 8, shopCounterRect.y - 10);
       ctx.strokeStyle = nearComputer ? "#7fffc7" : "rgba(255,255,255,0.08)";
       ctx.lineWidth = nearComputer ? 3 : 1;
@@ -1017,6 +1689,26 @@
         shopInteractRect.height
       );
       ctx.lineWidth = 1;
+      npcCharacters.forEach((npc) => {
+        ctx.fillStyle = npc.color;
+        ctx.fillRect(npc.rect.x, npc.rect.y, npc.rect.width, npc.rect.height);
+        ctx.fillStyle = npc.accent;
+        ctx.beginPath();
+        ctx.arc(npc.rect.x + npc.rect.width / 2, npc.rect.y - 12, 16, 0, Math.PI * 2);
+        ctx.fill();
+        const nearNpc = rectsIntersect(playerRect, npc.talkRect);
+        const showPrompt = gameState === GameState.HUB && nearNpc;
+        ctx.strokeStyle = showPrompt ? "#fdf3a5" : "rgba(255,255,255,0.12)";
+        ctx.lineWidth = showPrompt ? 3 : 1;
+        ctx.strokeRect(npc.talkRect.x, npc.talkRect.y, npc.talkRect.width, npc.talkRect.height);
+        ctx.fillStyle = "#eef4ff";
+        ctx.font = "12px 'Segoe UI', system-ui";
+        ctx.fillText(npc.name, npc.rect.x - 10, npc.rect.y - 28);
+        if (showPrompt) {
+          ctx.fillStyle = "#fef0c6";
+          ctx.fillText("Press E to talk", npc.rect.x - 8, npc.rect.y + npc.rect.height + 16);
+        }
+      });
     }
 
     function drawContractMenu() {
@@ -1034,8 +1726,9 @@
       let y = panelY + 90;
       contracts.forEach((contract, index) => {
         const selected = index === selectedContractIndex;
+        const effectivePay = Math.round(contract.payment * getEffectivePayMultiplier());
         ctx.fillStyle = selected ? "#7b90ff" : "#cfd7ff";
-        ctx.fillText(`${contract.name} — $${Math.round(contract.payment * missionPayMultiplier)}`, panelX + 24, y);
+        ctx.fillText(`${contract.name} — $${effectivePay}`, panelX + 24, y);
         ctx.fillStyle = selected ? "#eef3ff" : "#b8bcd0";
         ctx.font = "14px 'Segoe UI', system-ui";
         ctx.fillText(`${contract.description}`, panelX + 24, y + 20);
@@ -1044,7 +1737,12 @@
           panelX + 24,
           y + 40
         );
-        y += 70;
+        ctx.fillText(
+          `Dimension: ${contract.environment} · Hazard: ${contract.hazardLabel}`,
+          panelX + 24,
+          y + 60
+        );
+        y += 90;
         ctx.font = "bold 20px 'Segoe UI', system-ui";
       });
       ctx.font = "12px 'Segoe UI', system-ui";
@@ -1088,6 +1786,54 @@
       ctx.fillText(shopMessage, panelX + 24, panelY + panelH - 24);
     }
 
+    function drawCodex() {
+      const panelX = 140;
+      const panelY = 110;
+      const panelW = screenWidth - 280;
+      const panelH = screenHeight - 220;
+      ctx.fillStyle = "rgba(18,18,30,0.95)";
+      ctx.fillRect(panelX, panelY, panelW, panelH);
+      ctx.strokeStyle = "#a0b8ff";
+      ctx.strokeRect(panelX, panelY, panelW, panelH);
+      ctx.fillStyle = "#e6ecff";
+      ctx.font = "bold 26px 'Segoe UI', system-ui";
+      ctx.fillText("Dimension Codex", panelX + 24, panelY + 44);
+      const entries = getCodexEntries();
+      if (!entries.length) {
+        ctx.font = "18px 'Segoe UI', system-ui";
+        ctx.fillStyle = "#b9c8ff";
+        ctx.fillText(codexMessage, panelX + 24, panelY + 100);
+      } else {
+        let y = panelY + 90;
+        const visible = entries.slice(codexScrollOffset, codexScrollOffset + codexVisibleRows);
+        visible.forEach((entry, idx) => {
+          const actualIndex = codexScrollOffset + idx;
+          const selected = actualIndex === codexSelectionIndex;
+          ctx.fillStyle = selected ? "#2f3b68" : "#1f243f";
+          ctx.fillRect(panelX + 20, y - 10, panelW - 40, 90);
+          if (selected) {
+            ctx.strokeStyle = "#8bd3ff";
+            ctx.strokeRect(panelX + 20, y - 10, panelW - 40, 90);
+          }
+          ctx.fillStyle = "#eef2ff";
+          ctx.font = "20px 'Segoe UI', system-ui";
+          ctx.fillText(entry.name, panelX + 32, y + 6);
+          ctx.font = "14px 'Segoe UI', system-ui";
+          ctx.fillStyle = "#c5d4ff";
+          ctx.fillText(entry.description, panelX + 32, y + 26);
+          ctx.fillText(`Hazard: ${entry.hazard}`, panelX + 32, y + 44);
+          const stats = `Seen ${entry.timesSeen} | Completions ${entry.completions} | Failures ${entry.failures}`;
+          ctx.fillText(stats, panelX + 32, y + 60);
+          const extras = `Best Time ${formatTime(entry.bestTime)} · Best Beacons ${entry.bestBeacons || 0}`;
+          ctx.fillText(extras, panelX + 32, y + 76);
+          y += 96;
+        });
+      }
+      ctx.font = "14px 'Segoe UI', system-ui";
+      ctx.fillStyle = "#a8b5ff";
+      ctx.fillText("W/S to scroll · Enter/E or Esc to exit", panelX + 24, panelY + panelH - 24);
+    }
+
     function drawWinScreen() {
       const panelX = 180;
       const panelY = 160;
@@ -1103,13 +1849,21 @@
       ctx.font = "18px 'Segoe UI', system-ui";
       const lines = [
         `Contract: ${winSummary.contract}`,
+        `Zone: ${winSummary.environment || '???'} | Hazard: ${winSummary.hazard || '???'}`,
         `Earnings: $${winSummary.payment}`,
         `XP Gained: ${winSummary.xp}`,
         `Total Funds: $${winSummary.moneyTotal}`,
         `Level ${winSummary.level}  XP: ${playerXP}/${xpForNextLevel}`,
+        `Deliveries: ${winSummary.deliveries}  Streak: ${winSummary.streak}`,
+        `Rank: ${winSummary.rank}${winSummary.nextRank ? ' → ' + winSummary.nextRank + ' in ' + winSummary.nextRankDelta : ''}`,
+        winSummary.payBonus > 0 ? `Reputation bonus: +${winSummary.payBonus}% pay` : null,
+        `Beacons: ${winSummary.beacons}/${winSummary.beaconTotal} (+$${winSummary.beaconCash} / +${winSummary.beaconXp} XP)`,
+        `Mission Time: ${formatTime(winSummary.time)}`,
+        ...((winSummary.milestones || []).slice(0, 2).map((msg) => `Milestone: ${msg}`)),
+        `Best Streak: ${bestDeliveryStreak}`,
         "Press Enter/E to return to the office.",
       ];
-      lines.forEach((line, i) => ctx.fillText(line, panelX + 40, panelY + 110 + i * 30));
+      lines.filter(Boolean).forEach((line, i) => ctx.fillText(line, panelX + 40, panelY + 110 + i * 30));
     }
 
     function drawGameOver() {
@@ -1128,8 +1882,10 @@
       const lines = [
         `Contract: ${gameOverSummary.contract}`,
         `Reason: ${gameOverSummary.reason}`,
+        `Best Streak: ${gameOverSummary.best}`,
+        gameOverSummary.streakNote || null,
         "Press Enter/E to return to the office.",
-      ];
+      ].filter(Boolean);
       lines.forEach((line, i) => ctx.fillText(line, panelX + 40, panelY + 120 + i * 28));
     }
 
@@ -1142,11 +1898,19 @@
       }
       drawPlayer();
       drawHUD();
+      drawLoreCaption();
+      drawProgressToasts();
       if (gameState === GameState.CONTRACT_MENU) {
         drawContractMenu();
       }
       if (gameState === GameState.SHOP) {
         drawShop();
+      }
+      if (gameState === GameState.CODEX) {
+        drawCodex();
+      }
+      if (gameState === GameState.NPC_DIALOG && activeNpc) {
+        drawNpcDialog();
       }
       if (gameState === GameState.WIN) {
         drawWinScreen();

@@ -29,6 +29,31 @@ Navigate through various dimensions, each with unique properties, to deliver pac
 - Special hazards and challenges
 - Custom physics for each dimension
 
+### Dimension Lore & Backgrounds
+- Contracts are bound to bespoke dimension archetypes with unique skies and parallax details
+- Gradient horizons, themed hazards, and lore snippets set the mood for every run
+- Ambient cues on the HUD remind you what kind of dimension you are traversing
+
+### Hub Crew & Dialogues
+- Dispatcher Rae and Archivist Zell now inhabit the office with contextual dialogue
+- Chat with the crew for tips about streaks, ranks, upcoming contracts, and lore
+- Conversations can be advanced or skipped at any time for smooth pacing
+
+### Postal Reputation System
+- Completing deliveries raises your interdimensional reputation and unlocks postal ranks
+- Milestones grant permanent perks: payout multipliers, extra lives, cash bonuses, and suit tints
+- On-screen toasts, win panels, and HUD widgets track streaks, ranks, and upcoming rewards
+
+### Courier Codex
+- A dedicated log terminal catalogs every dimension blueprint you discover
+- View lore blurbs, hazard notes, completion counts, and personal best times from the hub computer (`C`)
+- Gives players a long-term objective to fully scan the multiverse
+
+### Data Beacon Hunts
+- Each generated level hides shimmering beacons perched on distant pads
+- Collect beacons for bonus credits, XP, and codex accolades; HUD tracks progress live
+- Optional challenges encourage revisiting runs for 100% completion
+
 ### Shop System
 - Purchase upgrades and cosmetics
 - Unlock new abilities
