@@ -134,6 +134,7 @@
         height: npc.rect.height + 50,
       };
     });
+    const dispatcherNpc = npcCharacters.find((npc) => npc.key === "dispatcher_rae");
 
     const namePrefixes = [
       "Aurora",
@@ -473,6 +474,7 @@
     let levelBeacons = [];
     let beaconsCollected = 0;
     let levelStartMs = 0;
+    let introArrowActive = true;
 
     let currentContract = null;
     let levelPlatforms = [];
@@ -691,6 +693,9 @@
       activeNpcLines = buildNpcDialogue(npc);
       activeNpcIndex = 0;
       gameState = GameState.NPC_DIALOG;
+      if (npc.key === "dispatcher_rae") {
+        introArrowActive = false;
+      }
     }
 
     function advanceNpcDialog() {
@@ -1672,6 +1677,20 @@
       ctx.fillText("Press E @ computer for contracts", deskRect.x + 12, deskRect.y - 10);
       ctx.fillText("Press C @ computer for codex", deskRect.x + 12, deskRect.y + 10);
       ctx.fillText("Press R @ counter for upgrades", shopCounterRect.x + 8, shopCounterRect.y - 10);
+      if (introArrowActive && dispatcherNpc) {
+        const arrowX = dispatcherNpc.rect.x + dispatcherNpc.rect.width / 2;
+        const arrowY = dispatcherNpc.rect.y - 80 + Math.sin(sliderTicker * 0.01) * 6;
+        ctx.fillStyle = "#ffe8a8";
+        ctx.beginPath();
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(arrowX - 18, arrowY - 36);
+        ctx.lineTo(arrowX + 18, arrowY - 36);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#fff7df";
+        ctx.font = "14px 'Segoe UI', system-ui";
+        ctx.fillText("Talk to Dispatcher Rae", arrowX - 90, arrowY - 46);
+      }
       ctx.strokeStyle = nearComputer ? "#7fffc7" : "rgba(255,255,255,0.08)";
       ctx.lineWidth = nearComputer ? 3 : 1;
       ctx.strokeRect(

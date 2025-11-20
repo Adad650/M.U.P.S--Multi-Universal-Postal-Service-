@@ -497,11 +497,13 @@ def build_npc_dialogue(npc):
 
 
 def open_npc_dialog(npc):
-    global activeNpc, activeNpcLines, activeNpcIndex, gameState
+    global activeNpc, activeNpcLines, activeNpcIndex, gameState, introArrowActive
     activeNpc = npc
     activeNpcLines = build_npc_dialogue(npc)
     activeNpcIndex = 0
     gameState = GameState.NPC_DIALOG
+    if npc.get("key") == "dispatcher_rae":
+        introArrowActive = False
 
 
 def advance_npc_dialog():
@@ -543,6 +545,7 @@ backdropOrbs = []
 levelBeacons = []
 beaconsCollected = 0
 levelStartTimeMs = 0
+introArrowActive = True
 levelVerticalBias = 1.0
 levelHorizontalBias = 1.0
 wallJumpUnlocked = False
@@ -1530,6 +1533,19 @@ while True:
         pygame.draw.rect(screen, computerScreenColor, screenRect)
         keyboardRect = pygame.Rect(computerBodyRect.left - 20, computerBodyRect.bottom, computerBodyRect.width + 40, 14)
         pygame.draw.rect(screen, (160, 160, 175), keyboardRect)
+        dispatcher_npc = next((npc for npc in npc_characters if npc["key"] == "dispatcher_rae"), None)
+        if introArrowActive and dispatcher_npc:
+            arrow_x = dispatcher_npc["rect"].centerx
+            arrow_y = dispatcher_npc["rect"].top - 70
+            wiggle = math.sin(pygame.time.get_ticks() / 400.0) * 6
+            points = [
+                (arrow_x, arrow_y + wiggle),
+                (arrow_x - 18, arrow_y - 30 + wiggle),
+                (arrow_x + 18, arrow_y - 30 + wiggle),
+            ]
+            pygame.draw.polygon(screen, (255, 230, 140), points)
+            prompt = smallFont.render("Talk to Dispatcher Rae", True, (250, 240, 210))
+            screen.blit(prompt, (arrow_x - prompt.get_width() // 2, arrow_y - 50 + wiggle))
         comp_hint = smallFont.render("E: Contracts", True, (210, 240, 255))
         screen.blit(comp_hint, (computerBodyRect.left - 8, computerBodyRect.top - 50))
         codex_hint = smallFont.render("C: Codex", True, (190, 220, 255))
